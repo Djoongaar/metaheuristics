@@ -1,22 +1,33 @@
-from PIL import Image
 import numpy as np
+from PIL import Image
+from scipy.linalg import hadamard
 
 
 class Watermark:
-    def __init__(self, image_path: str):
-        self.image = self.validate_image(image_path)
-        self.matrix = self.image_to_matrix(self.image)
-        self.block_array = self.crop_matrix(self.matrix)
+    def __init__(self, image_path: str, embedded_image: str):
+        self.image = self.get_cover_image(image_path)
+        self.image_matrix = self.image_to_matrix(self.image)
+        self.block_array = self.crop_matrix(self.image_matrix)
         self.entropies = self.get_entropies()
+        self.embedded_image = self.get_embedded_image(embedded_image)
+        self.embedded_image_bin = self.image_to_bin(self.embedded_image)
         self.embedded_image_size = 64 * 64
-        self.candidate_blocks_num = self.embedded_image_size // 2
-        self.candidate_blocks = self.entropies[:self.candidate_blocks_num]
-        self.selected_blocks = self.ddfa()
+        self.candidate_blocks_count = self.embedded_image_size // 2
+        self.candidate_blocks = self.entropies[:self.candidate_blocks_count]
+        self.ddfa()
 
     @staticmethod
-    def validate_image(image_path):
+    def get_cover_image(image_path):
         im = Image.open(image_path)
         assert im.size == (512, 512)
+        assert im.mode == "L"
+
+        return im
+
+    @staticmethod
+    def get_embedded_image(embedded_image_path):
+        im = Image.open(embedded_image_path)
+        assert im.size == (64, 64)
         assert im.mode == "L"
 
         return im
@@ -25,11 +36,22 @@ class Watermark:
     def image_to_matrix(image: Image):
         """
         Функция принимает на вход изображение,
-        и возвращает матрицу размерностью 512х512
+        и возвращает матрицу
         """
         pix = np.array(image)
 
         return pix
+
+    @staticmethod
+    def image_to_bin(image: Image):
+        """
+        Функция принимает на вход изображение,
+        и возвращает двоичную матрицу
+        """
+        pix = Watermark.image_to_matrix(image)
+        threshold = 128
+
+        return pix < threshold
 
     @staticmethod
     def crop_matrix(matrix):
@@ -86,10 +108,24 @@ class Watermark:
 
             entropies.append({
                 'index': i,
-                'entropy': shannon_entropy + pal_entropy
+                'entropy': shannon_entropy + pal_entropy,
+                'block': self.block_array[i]
             })
 
         return sorted(entropies, key=lambda d: d['entropy'])
+
+    @staticmethod
+    def get_hadamard(matrix):
+        """
+        Returns Hadamard coefficients of matrix with shape 8 x 8
+        """
+        assert matrix.shape == (8,8)
+        return np.multiply(matrix, hadamard(8))
+
+    @staticmethod
+    def get_coefficients(hadamard_matrix):
+        """ Returns coefficients of changing elements """
+        return hadamard_matrix[2][1], hadamard_matrix[2][5], hadamard_matrix[6][1], hadamard_matrix[6][5]
 
     def ddfa(self):
         """
@@ -97,4 +133,7 @@ class Watermark:
         Returns two matrices with x and y coordinates of
         selected blocks
         """
-        return True
+        for candidate in self.candidate_blocks:
+            hadamard_matrix = self.get_hadamard(candidate['block'])
+            candidate['hadamard'] = hadamard_matrix
+            candidate['coefficients'] = self.get_coefficients(hadamard_matrix)
