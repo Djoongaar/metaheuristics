@@ -12,6 +12,7 @@ class Watermark:
         self.embedded_image = self.get_embedded_image(embedded_image)
         self.embedded_image_bin = self.image_to_bin(self.embedded_image)
         self.embedded_image_size = 64 * 64
+        self.embedding_threshold = 5
         self.candidate_blocks_count = self.embedded_image_size // 2
         self.candidate_blocks = self.entropies[:self.candidate_blocks_count]
         self.ddfa()
@@ -120,12 +121,77 @@ class Watermark:
         Returns Hadamard coefficients of matrix with shape 8 x 8
         """
         assert matrix.shape == (8,8)
-        return np.multiply(matrix, hadamard(8))
+        return np.multiply(np.multiply(hadamard(8), matrix), hadamard(8))
 
     @staticmethod
     def get_coefficients(hadamard_matrix):
         """ Returns coefficients of changing elements """
         return hadamard_matrix[2][1], hadamard_matrix[2][5], hadamard_matrix[6][1], hadamard_matrix[6][5]
+
+    @staticmethod
+    def calculate_avgs(hadamard_matrix):
+        """
+        Function calculates avg value of pixels around target coefficie
+        :param hadamard_matrix:
+        :return:
+        """
+        def get_avg(i, j):
+            return (hadamard_matrix[i-1][j-1] +
+                    hadamard_matrix[i-1][j] +
+                    hadamard_matrix[i-1][j+1] +
+                    hadamard_matrix[i][j-1] +
+                    hadamard_matrix[i][j+1] +
+                    hadamard_matrix[i+1][j-1] +
+                    hadamard_matrix[i+1][j] +
+                    hadamard_matrix[i+1][j+1]) / 8
+
+        return get_avg(2,1), get_avg(2,5), get_avg(6,1), get_avg(6,5)
+
+    @staticmethod
+    def get_avg(block, bit_num):
+         return block['averages'][bit_num]
+
+    @staticmethod
+    def embedding_new_pixels(block):
+        try:
+            block['hadamard_embedded'][2][1] = block['new_coefficients'][0]
+            block['hadamard_embedded'][2][5] = block['new_coefficients'][1]
+            block['hadamard_embedded'][6][1] = block['new_coefficients'][2]
+            block['hadamard_embedded'][6][5] = block['new_coefficients'][3]
+        except IndexError:
+            pass
+
+    @staticmethod
+    def calculate_new_pixels(block, pixel):
+        if 'new_coefficients' in block:
+            block['new_coefficients'].append(pixel)
+        else:
+            block['new_coefficients'] = [pixel]
+
+    def embedding_image(self, block_array):
+        block_count = 0
+        assert len(block_array) == 1024
+
+        for i in range(self.embedded_image_bin.shape[0]):
+            for j in range(self.embedded_image_bin.shape[1]):
+                bit_count = i * 64 + j + 1
+                block_count = (bit_count - 1) // 4
+                bit_num = bit_count % 4
+                block = self.candidate_blocks[block_count]
+                new_pix = self.get_avg(block, bit_num - 1)
+
+                if self.embedded_image_bin[i][j]:
+                    new_pix += self.embedding_threshold
+                else:
+                    new_pix -= self.embedding_threshold
+
+                self.calculate_new_pixels(block, new_pix)
+
+        for block in block_array:
+            self.embedding_new_pixels(block)
+            block['block_embedded'] = self.get_hadamard(block['hadamard_embedded'])
+
+        return block_count
 
     def ddfa(self):
         """
@@ -135,5 +201,10 @@ class Watermark:
         """
         for candidate in self.candidate_blocks:
             hadamard_matrix = self.get_hadamard(candidate['block'])
+
             candidate['hadamard'] = hadamard_matrix
+            candidate['hadamard_embedded'] = np.array(hadamard_matrix, copy=True)
             candidate['coefficients'] = self.get_coefficients(hadamard_matrix)
+            candidate['averages'] = self.calculate_avgs(hadamard_matrix)
+
+        self.embedding_image(self.candidate_blocks[:1024])
