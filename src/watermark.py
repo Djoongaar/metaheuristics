@@ -121,7 +121,7 @@ class Watermark:
         Returns Hadamard coefficients of matrix with shape 8 x 8
         """
         assert matrix.shape == (8,8)
-        return np.multiply(np.multiply(hadamard(8), matrix), hadamard(8))
+        return np.matmul(np.matmul(hadamard(8), matrix), hadamard(8))
 
     @staticmethod
     def get_coefficients(hadamard_matrix):
