@@ -7,6 +7,7 @@ class Watermark:
     def __init__(self, image_path: str, embedded_image: str):
         self.image = self.get_cover_image(image_path)
         self.image_matrix = self.image_to_matrix(self.image)
+        self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
         self.block_array = self.crop_matrix(self.image_matrix)
         self.entropies = self.get_entropies()
         self.embedded_image = self.get_embedded_image(embedded_image)
@@ -15,7 +16,9 @@ class Watermark:
         self.embedding_threshold = 5
         self.candidate_blocks_count = self.embedded_image_size // 2
         self.candidate_blocks = self.entropies[:self.candidate_blocks_count]
-        self.ddfa()
+        self.secret_key = np.zeros(shape=(64, 64), dtype=float)
+        self.watermark = self.embedding(self.candidate_blocks[:1024])
+        self.result = self.extracting()
 
     @staticmethod
     def get_cover_image(image_path):
@@ -44,6 +47,11 @@ class Watermark:
         return pix
 
     @staticmethod
+    def matrix_to_image(matrix):
+
+        return Image.fromarray(matrix, mode='L')
+
+    @staticmethod
     def image_to_bin(image: Image):
         """
         Функция принимает на вход изображение,
@@ -60,28 +68,29 @@ class Watermark:
         Дробит матрицу размером 512х512 на блоки 8х8
         и возвращает в массив размерностью (4096, 8, 8)
         """
-        cropped = np.zeros(shape=(64 * 64, 8, 8), dtype=int)
+        cropped = np.zeros(shape=(64 * 64, 8, 8), dtype=float)
         for i in range(64):
             for j in range(64):
                 cropped[i * 64 + j] = matrix[8 * i:8 * (i + 1), 8 * j:8 * (j + 1)]
         return cropped
 
-    @staticmethod
-    def reconstruct_matrix(cropped):
-        """
-        Воссоздает и возвращает матрицу из массива блоков
-        """
-        matrix = np.zeros(shape=(512, 512))
+    def build_matrix(self):
+        """ Воссоздает матрицу размером 512 х 512 из массива блоков (4096, 8, 8) """
+        matrix = np.array(self.image_matrix, copy=True)
 
-        for i in range(64):
-            for j in range(64):
-                matrix[8 * i:8 * (i + 1), 8 * j:8 * (j + 1)] = cropped[i * 64 + j]
+        for block in self.candidate_blocks:
+            if 'block_embedded' in block:
+                for i in range(8):
+                    for j in range(8):
+                        i_offset = block['index'] // 64
+                        j_offset = block['index'] % 64
+                        matrix[i + i_offset][j + j_offset] = block['block_embedded'][i][j]
 
         return matrix
 
     @staticmethod
     def get_shannon_entropy(array):
-        """ Calculate Shannon's entropy of array """
+        """ Рассчитывает энтропию Шеннона """
         items = []
         for i in array:
             items.append(i * np.log(i))
@@ -90,7 +99,7 @@ class Watermark:
 
     @staticmethod
     def get_pal_entropy(array):
-        """ Calculate Pal's & Pal's entropy """
+        """ Рассчитывает энтропию Пал """
         items = []
         for i in array:
             items.append(i * np.exp(1 - i))
@@ -110,101 +119,130 @@ class Watermark:
             entropies.append({
                 'index': i,
                 'entropy': shannon_entropy + pal_entropy,
-                'block': self.block_array[i]
+                'origin': self.block_array[i]
             })
 
         return sorted(entropies, key=lambda d: d['entropy'])
 
     @staticmethod
-    def get_hadamard(matrix):
+    def get_hadamard(matrix, round=False):
         """
-        Returns Hadamard coefficients of matrix with shape 8 x 8
+        Выполняет преобразование Адамара.
+        Возвращает матрицу размерностью 8 x 8
         """
         assert matrix.shape == (8,8)
-        return np.matmul(np.matmul(hadamard(8), matrix), hadamard(8))
+
+        h = hadamard(8) / 1
+        if round:
+            return np.round(np.matmul(h, matrix, h) / 3)
+
+        return np.matmul(h, matrix, h) / 3
 
     @staticmethod
-    def get_coefficients(hadamard_matrix):
-        """ Returns coefficients of changing elements """
-        return hadamard_matrix[2][1], hadamard_matrix[2][5], hadamard_matrix[6][1], hadamard_matrix[6][5]
+    def get_avg(matrix, bit_num):
+        assert matrix.shape == (8, 8)
 
-    @staticmethod
-    def calculate_avgs(hadamard_matrix):
-        """
-        Function calculates avg value of pixels around target coefficie
-        :param hadamard_matrix:
-        :return:
-        """
-        def get_avg(i, j):
-            return (hadamard_matrix[i-1][j-1] +
-                    hadamard_matrix[i-1][j] +
-                    hadamard_matrix[i-1][j+1] +
-                    hadamard_matrix[i][j-1] +
-                    hadamard_matrix[i][j+1] +
-                    hadamard_matrix[i+1][j-1] +
-                    hadamard_matrix[i+1][j] +
-                    hadamard_matrix[i+1][j+1]) / 8
-
-        return get_avg(2,1), get_avg(2,5), get_avg(6,1), get_avg(6,5)
-
-    @staticmethod
-    def get_avg(block, bit_num):
-         return block['averages'][bit_num]
-
-    @staticmethod
-    def embedding_new_pixels(block):
-        try:
-            block['hadamard_embedded'][2][1] = block['new_coefficients'][0]
-            block['hadamard_embedded'][2][5] = block['new_coefficients'][1]
-            block['hadamard_embedded'][6][1] = block['new_coefficients'][2]
-            block['hadamard_embedded'][6][5] = block['new_coefficients'][3]
-        except IndexError:
-            pass
-
-    @staticmethod
-    def calculate_new_pixels(block, pixel):
-        if 'new_coefficients' in block:
-            block['new_coefficients'].append(pixel)
+        if bit_num == 0:
+            i, j = 2, 1
+        elif bit_num == 1:
+            i, j = 2, 5
+        elif bit_num == 2:
+            i, j = 6, 1
         else:
-            block['new_coefficients'] = [pixel]
+            i, j = 6, 5
 
-    def embedding_image(self, block_array):
-        block_count = 0
-        assert len(block_array) == 1024
+        return (matrix[i-1][j-1] +
+            matrix[i-1][j] +
+            matrix[i-1][j+1] +
+            matrix[i][j-1] +
+            matrix[i][j+1] +
+            matrix[i+1][j-1] +
+            matrix[i+1][j] +
+            matrix[i+1][j+1]) / 8
 
-        for i in range(self.embedded_image_bin.shape[0]):
-            for j in range(self.embedded_image_bin.shape[1]):
-                bit_count = i * 64 + j + 1
-                block_count = (bit_count - 1) // 4
+    @staticmethod
+    def insert_new_pixel(block, new_pix, bit_num):
+        if bit_num == 0:
+            block['hadamard_embedded'][2][1] = new_pix
+        elif bit_num == 1:
+            block['hadamard_embedded'][2][5] = new_pix
+        elif bit_num == 2:
+            block['hadamard_embedded'][6][1] = new_pix
+        else:
+            block['hadamard_embedded'][6][5] = new_pix
+
+    def save_secret_key(self, block_index, i, j):
+        self.secret_key[i][j] = block_index
+
+    def encoding(self):
+
+        for i in range(64):
+            for j in range(64):
+                bit_count = i * 64 + j
+                block_count = bit_count  // 4
                 bit_num = bit_count % 4
                 block = self.candidate_blocks[block_count]
-                new_pix = self.get_avg(block, bit_num - 1)
+                new_pix = self.get_avg(block['hadamard'], bit_num)
 
                 if self.embedded_image_bin[i][j]:
                     new_pix += self.embedding_threshold
                 else:
                     new_pix -= self.embedding_threshold
 
-                self.calculate_new_pixels(block, new_pix)
+                self.insert_new_pixel(block, new_pix, bit_num)
+                self.save_secret_key(block['index'], i, j)
 
-        for block in block_array:
-            self.embedding_new_pixels(block)
-            block['block_embedded'] = self.get_hadamard(block['hadamard_embedded'])
-
-        return block_count
-
-    def ddfa(self):
+    def embedding(self, candidate_blocks):
         """
-        Distinct discrete firefly algorithm implementation.
-        Returns two matrices with x and y coordinates of
-        selected blocks
+        Погружает ЦВЗ (бинарное изображение размерностью 64 х 64)
+        в покрывающее изображение размером 512 х 512
         """
-        for candidate in self.candidate_blocks:
-            hadamard_matrix = self.get_hadamard(candidate['block'])
 
-            candidate['hadamard'] = hadamard_matrix
-            candidate['hadamard_embedded'] = np.array(hadamard_matrix, copy=True)
-            candidate['coefficients'] = self.get_coefficients(hadamard_matrix)
-            candidate['averages'] = self.calculate_avgs(hadamard_matrix)
+        # Шаг 1. Сначала для всех блоков-кандидатов считаем функцию Адамара
+        for candidate_block in candidate_blocks:
+            hadamard_matrix = self.get_hadamard(candidate_block['origin'])
 
-        self.embedding_image(self.candidate_blocks[:1024])
+            candidate_block['hadamard'] = hadamard_matrix
+            candidate_block['hadamard_embedded'] = np.array(hadamard_matrix, copy=True)
+
+        # Шаг 2. Затем для каждого бита встраиваемого изображения:
+        # считаем новое значение коэффициента и встраиваем его в матрицу Адамара
+        self.encoding()
+
+        # Шаг 3. Выполняем обратное преобразование Адамара
+        for candidate in candidate_blocks:
+            candidate['block_embedded'] = self.get_hadamard(candidate['hadamard_embedded'], round=True)
+
+        # Шаг 4. По массиву размерностью (4096, 8, 8) восстанавливаем матрицу размерностью 512 х 512
+        self.embedded_matrix = self.build_matrix()
+
+        # Шаг 5. Из матрицы размерностью 512 х 512 восстанавливаем и возвращаем изображение PNG
+        return self.matrix_to_image(self.embedded_matrix)
+
+    def extracting(self):
+        """
+        Получает ЦВЗ из покрывающего объекта
+        """
+        result = np.zeros(shape=(64, 64), dtype=float)
+        # Шаг 1. Получаем из ЦВЗ матрицу размерностью 512 х 512
+        matrix = self.image_to_matrix(self.watermark)
+
+        # Шаг 2. Разбивает матрицу (со встроенным ЦВЗ) размером 512 х 512 на массив размерностью (4096, 8, 8)
+        block_array = self.crop_matrix(matrix)
+
+        # Шаг 3. Использую секретный ключ получаем адреса блоков в которых хранятся ЦВЗ
+        for i in range(64):
+            for j in range(64):
+                bit_count = i * 64 + j
+                block_ind = int(self.secret_key[i][j])
+                bit_num = bit_count % 4
+
+                # Шаг 4. Применить преобразование Адамара к полученным блокам
+                if bit_num == 0:
+                    hadamard = self.get_hadamard(block_array[block_ind])
+                    result[i][j] = 0 if hadamard[2][1] <= self.get_avg(hadamard, 0) else 1
+                    result[i][j] = 0 if hadamard[2][5] <= self.get_avg(hadamard, 1) else 1
+                    result[i][j] = 0 if hadamard[6][1] <= self.get_avg(hadamard, 2) else 1
+                    result[i][j] = 0 if hadamard[6][5] <= self.get_avg(hadamard, 3) else 1
+
+        return self.matrix_to_image(result * 255)
