@@ -13,7 +13,7 @@ class Watermark:
         self.embedded_image = self.get_embedded_image(embedded_image)
         self.embedded_image_bin = self.image_to_bin(self.embedded_image)
         self.embedded_image_size = 64 * 64
-        self.embedding_threshold = 5
+        self.embedding_threshold = 2
         self.candidate_blocks_count = self.embedded_image_size // 2
         self.candidate_blocks = self.entropies[:self.candidate_blocks_count]
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
@@ -84,7 +84,7 @@ class Watermark:
                     for j in range(8):
                         i_offset = block['index'] // 64
                         j_offset = block['index'] % 64
-                        matrix[i + i_offset][j + j_offset] = block['block_embedded'][i][j]
+                        matrix[8 * i_offset + i][8 * j_offset + j] = block['block_embedded'][i][j]
 
         return matrix
 
