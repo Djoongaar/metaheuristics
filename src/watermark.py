@@ -1,6 +1,10 @@
 import numpy as np
 from PIL import Image
 from scipy.linalg import hadamard
+from skimage.metrics import (
+    structural_similarity as ssim,
+    peak_signal_noise_ratio as psnr
+)
 
 
 class Watermark:
@@ -17,8 +21,36 @@ class Watermark:
         self.candidate_blocks_count = self.embedded_image_size // 2
         self.candidate_blocks = self.entropies[:self.candidate_blocks_count]
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
-        self.watermark = self.embedding(self.candidate_blocks[:1024])
+        self.watermark_matrix = self.embedding(self.candidate_blocks[:1024])
+        self.watermark = self.matrix_to_image(self.watermark_matrix)
         self.result = self.extracting()
+        self.ssim = self.get_ssim(self.image_matrix, self.watermark_matrix)
+        self.psnr = self.get_psnr(self.image_matrix, self.watermark_matrix)
+        self.quality = self.compute_quality(self.image_matrix, self.watermark_matrix)
+        self.nc = self.get_normal_correlation(self.image_matrix, self.watermark_matrix)
+
+    @staticmethod
+    def get_ssim(im1, im2):
+        return ssim(im1, im2)
+
+    @staticmethod
+    def get_psnr(im1, im2):
+        return psnr(im1, im2)
+
+    @staticmethod
+    def get_normal_correlation(im1, im2):
+        return np.sum(np.matmul(im1, im2)) / np.sum(np.matmul(im1, im1))
+
+    @staticmethod
+    def compute_quality(im1: np.ndarray, im2: np.ndarray):
+        assert im1.shape == im2.shape == (512, 512)
+
+        gamma = 10
+        ssim = Watermark.get_ssim(im1, im2)
+        psnr = Watermark.get_psnr(im1, im2)
+        robust = Watermark.get_normal_correlation(im1, im2)
+
+        return gamma / psnr + 1 / ssim + 1 / robust
 
     @staticmethod
     def get_cover_image(image_path):
@@ -244,27 +276,24 @@ class Watermark:
         self.embedded_matrix = self.build_matrix()
 
         # Шаг 5. Из матрицы размерностью 512 х 512 восстанавливаем и возвращаем изображение PNG
-        return self.matrix_to_image(self.embedded_matrix)
+        return self.embedded_matrix
 
     def extracting(self):
         """
         Получает ЦВЗ из покрывающего объекта
         """
         result = np.zeros(shape=(64, 64), dtype=float)
-        # Шаг 1. Получаем из ЦВЗ матрицу размерностью 512 х 512
-        matrix = self.image_to_matrix(self.watermark)
+        # Шаг 1. Разбивает матрицу (со встроенным ЦВЗ) размером 512 х 512 на массив размерностью (4096, 8, 8)
+        block_array = self.crop_matrix(self.watermark_matrix)
 
-        # Шаг 2. Разбивает матрицу (со встроенным ЦВЗ) размером 512 х 512 на массив размерностью (4096, 8, 8)
-        block_array = self.crop_matrix(matrix)
-
-        # Шаг 3. Использую секретный ключ получаем адреса блоков в которых хранятся ЦВЗ
+        # Шаг 2. Использую секретный ключ получаем адреса блоков в которых хранятся ЦВЗ
         for i in range(64):
             for j in range(64):
                 bit_count = i * 64 + j
                 block_ind = int(self.secret_key[i][j])
                 bit_num = bit_count % 4
 
-                # Шаг 4. Применить преобразование Адамара к полученным блокам
+                # Шаг 3. Применить преобразование Адамара к полученным блокам
                 if bit_num == 0:
                     hadamard = self.get_hadamard(block_array[block_ind])
                     result[i][j] = 1 if hadamard[2][1] >= self.get_avg(hadamard, 0) else 0
@@ -272,4 +301,4 @@ class Watermark:
                     result[i][j+2] = 1 if hadamard[6][1] >= self.get_avg(hadamard, 2) else 0
                     result[i][j+3] = 1 if hadamard[6][5] >= self.get_avg(hadamard, 3) else 0
 
-        return self.bin_to_image(result)
+        return result
