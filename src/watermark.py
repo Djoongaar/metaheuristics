@@ -48,7 +48,15 @@ class Watermark:
 
     @staticmethod
     def matrix_to_image(matrix):
-
+        if matrix.shape == (64, 64):
+            for i in range(64):
+                for j in range(64):
+                    if matrix[i][j] == 255:
+                        print(0, end="")
+                    else:
+                        print(1, end="")
+                    if j == 63:
+                        print("")
         return Image.fromarray(matrix, mode='L')
 
     @staticmethod
@@ -57,10 +65,29 @@ class Watermark:
         Функция принимает на вход изображение,
         и возвращает двоичную матрицу
         """
+        result = np.zeros(shape=(64, 64), dtype=int)
         pix = Watermark.image_to_matrix(image)
-        threshold = 128
 
-        return pix < threshold
+        for i in range(64):
+            for j in range(64):
+                if pix[i][j] < 128:
+                    result[i][j] = 0
+                else:
+                    result[i][j] = 1
+        return result
+
+    @staticmethod
+    def bin_to_image(bin_matrix):
+        assert bin_matrix.shape == (64, 64)
+
+        result = np.zeros(shape=(64, 64), dtype=int)
+        for i in range(64):
+            for j in range(64):
+                if bin_matrix[i][j] == 0:
+                    result[i][j] = 100
+                else:
+                    result[i][j] = 255
+        return result
 
     @staticmethod
     def crop_matrix(matrix):
@@ -240,9 +267,9 @@ class Watermark:
                 # Шаг 4. Применить преобразование Адамара к полученным блокам
                 if bit_num == 0:
                     hadamard = self.get_hadamard(block_array[block_ind])
-                    result[i][j] = 0 if hadamard[2][1] <= self.get_avg(hadamard, 0) else 1
-                    result[i][j] = 0 if hadamard[2][5] <= self.get_avg(hadamard, 1) else 1
-                    result[i][j] = 0 if hadamard[6][1] <= self.get_avg(hadamard, 2) else 1
-                    result[i][j] = 0 if hadamard[6][5] <= self.get_avg(hadamard, 3) else 1
+                    result[i][j] = 1 if hadamard[2][1] >= self.get_avg(hadamard, 0) else 0
+                    result[i][j+1] = 1 if hadamard[2][5] >= self.get_avg(hadamard, 1) else 0
+                    result[i][j+2] = 1 if hadamard[6][1] >= self.get_avg(hadamard, 2) else 0
+                    result[i][j+3] = 1 if hadamard[6][5] >= self.get_avg(hadamard, 3) else 0
 
-        return self.matrix_to_image(result * 255)
+        return self.bin_to_image(result)
