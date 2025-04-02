@@ -27,7 +27,7 @@ class Watermark:
         self.ssim = self.get_ssim(self.image_matrix, self.watermark_matrix)
         self.psnr = self.get_psnr(self.image_matrix, self.watermark_matrix)
         self.quality = self.compute_quality(self.image_matrix, self.watermark_matrix)
-        self.nc = self.get_normal_correlation(self.image_matrix, self.watermark_matrix)
+        self.nc = self.get_normal_correlation(self.embedded_image_bin, self.result)
 
     @staticmethod
     def get_ssim(im1, im2):
@@ -39,7 +39,7 @@ class Watermark:
 
     @staticmethod
     def get_normal_correlation(im1, im2):
-        return np.sum(np.matmul(im1, im2)) / np.sum(np.matmul(im1, im1))
+        return np.sum(np.multiply(im1, im2)) / np.sum(np.multiply(im1, im1))
 
     @staticmethod
     def compute_quality(im1: np.ndarray, im2: np.ndarray):
@@ -80,15 +80,6 @@ class Watermark:
 
     @staticmethod
     def matrix_to_image(matrix):
-        if matrix.shape == (64, 64):
-            for i in range(64):
-                for j in range(64):
-                    if matrix[i][j] == 255:
-                        print(0, end="")
-                    else:
-                        print(1, end="")
-                    if j == 63:
-                        print("")
         return Image.fromarray(matrix, mode='L')
 
     @staticmethod
