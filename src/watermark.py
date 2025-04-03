@@ -24,11 +24,10 @@ class Watermark:
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
         self.watermark_matrix = self.embedding(self.candidate_blocks[:1024])
         self.watermark = Utilities.matrix_to_image(self.watermark_matrix)
-        self.result = self.extracting()
         self.ssim = Utilities.get_ssim(self.image_matrix, self.watermark_matrix)
         self.psnr = Utilities.get_psnr(self.image_matrix, self.watermark_matrix)
-        self.quality = Utilities.compute_quality(self.image_matrix, self.watermark_matrix)
-        self.nc = Utilities.get_normal_correlation(self.embedded_image_bin, self.result)
+        self.extracted = self.extracting()
+        self.nc = Utilities.get_normal_correlation(self.embedded_image_bin, self.extracted)
 
     def build_matrix(self):
         """ Воссоздает матрицу размером 512 х 512 из массива блоков (4096, 8, 8) """
@@ -45,7 +44,7 @@ class Watermark:
         return matrix
 
     def get_entropies(self):
-        """ Calculate complex entropy """
+        """ Рассчитывает комплексную энтропию """
         entropies = []
         for i in range(len(self.block_array)):
             array = self.block_array[i].flatten()
@@ -110,3 +109,28 @@ class Watermark:
         # Шаг 5. Из матрицы размерностью 512 х 512 восстанавливаем и возвращаем изображение PNG
         return self.embedded_matrix
 
+    def extracting(self):
+        """
+        Получает ЦВЗ из покрывающего объекта
+        """
+        result = np.zeros(shape=(64, 64), dtype=float)
+
+        # Шаг 1. Разбивает матрицу (со встроенным ЦВЗ) размером 512 х 512 на массив размерностью (4096, 8, 8)
+        block_array = Utilities.crop_matrix(self.embedded_matrix)
+
+        # Шаг 2. Использую секретный ключ получаем адреса блоков в которых хранятся ЦВЗ
+        for i in range(64):
+            for j in range(64):
+                bit_count = i * 64 + j
+                block_ind = int(self.secret_key[i][j])
+                bit_num = bit_count % 4
+
+                # Шаг 3. Применить преобразование Адамара к полученным блокам
+                if bit_num == 0:
+                    hadamard = Utilities.get_hadamard(block_array[block_ind])
+                    result[i][j] = 1 if hadamard[2][1] >= Utilities.get_avg(hadamard, 0) else 0
+                    result[i][j+1] = 1 if hadamard[2][5] >= Utilities.get_avg(hadamard, 1) else 0
+                    result[i][j+2] = 1 if hadamard[6][1] >= Utilities.get_avg(hadamard, 2) else 0
+                    result[i][j+3] = 1 if hadamard[6][5] >= Utilities.get_avg(hadamard, 3) else 0
+
+        return result
