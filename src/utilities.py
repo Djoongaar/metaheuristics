@@ -1,4 +1,6 @@
 import numpy as np
+import cv2
+
 from PIL import Image
 from scipy.linalg import hadamard
 from skimage.metrics import (
@@ -168,3 +170,169 @@ class Utilities:
             block['hadamard_embedded'][6][1] = new_pix
         else:
             block['hadamard_embedded'][6][5] = new_pix
+
+    @staticmethod
+    def get_entropies(block_array):
+        """ Рассчитывает комплексную энтропию """
+        entropies = []
+        for i in range(len(block_array)):
+            array = block_array[i].flatten()
+            array_norm = array / np.sum(array)
+
+            shannon_entropy = Utilities.get_shannon_entropy(array_norm)
+            pal_entropy = Utilities.get_pal_entropy(array_norm)
+
+            entropies.append({
+                'index': i,
+                'entropy': shannon_entropy + pal_entropy,
+                'origin': block_array[i]
+            })
+
+        return sorted(entropies, key=lambda d: d['entropy'])
+
+    @staticmethod
+    def get_block_candidates(block_array):
+        embedded_image_size = 64 * 64
+        candidate_block_count = embedded_image_size // 2
+        entropies = Utilities.get_entropies(block_array)
+
+        return entropies[:candidate_block_count]
+
+    @staticmethod
+    def extracting(watermark, secret_key):
+        """
+        Получает ЦВЗ из покрывающего объекта
+        """
+        result = np.zeros(shape=(64, 64), dtype=float)
+
+        # Шаг 1. Разбивает матрицу (со встроенным ЦВЗ) размером 512 х 512 на массив размерностью (4096, 8, 8)
+        block_array = Utilities.crop_matrix(Utilities.image_to_matrix(watermark))
+
+        # Шаг 2. Использую секретный ключ получаем адреса блоков в которых хранятся ЦВЗ
+        for i in range(64):
+            for j in range(64):
+                bit_count = i * 64 + j
+                block_ind = int(secret_key[i][j])
+                bit_num = bit_count % 4
+
+                # Шаг 3. Применить преобразование Адамара к полученным блокам
+                if bit_num == 0:
+                    hadamard = Utilities.get_hadamard(block_array[block_ind])
+
+                    # Шаг 4. Посчитать неравенство
+                    result[i][j] = 1 if hadamard[2][1] >= Utilities.get_avg(hadamard, 0) else 0
+                    result[i][j + 1] = 1 if hadamard[2][5] >= Utilities.get_avg(hadamard, 1) else 0
+                    result[i][j + 2] = 1 if hadamard[6][1] >= Utilities.get_avg(hadamard, 2) else 0
+                    result[i][j + 3] = 1 if hadamard[6][5] >= Utilities.get_avg(hadamard, 3) else 0
+
+        return result
+
+class Attack:
+    def __init__(self, image):
+        self.image_matrix = Utilities.image_to_matrix(image)
+        self.mf = self.median_filter()
+        self.gs3 = self.gaussian_filter()
+        self.gs5 = self.gaussian_filter(ksize=5)
+        self.avr = self.average_filter(ksize=3)
+        self.shr = self.sharpening_filter()
+        self.his = self.histogram_equalization()
+        self.gc2 = self.gamma_correction()
+        self.gc4 = self.gamma_correction(gamma=0.4)
+        self.gn1 = self.gaussian_noise()
+        self.gn5 = self.gaussian_noise(n=0.005)
+        self.gn9 = self.gaussian_noise(n=0.009)
+        self.sp1 = self.salt_and_pepper_noise()
+        self.sp2 = self.salt_and_pepper_noise(n=0.02)
+        self.sp3 = self.salt_and_pepper_noise(n=0.03)
+
+    def median_filter(self, ksize=3):
+        """
+        Применяет медианный фильтр на матрицах с заданным размером
+        """
+        return cv2.medianBlur(self.image_matrix, ksize)
+
+    def gaussian_filter(self, ksize=3):
+        """
+        Применяет фильтр Гаусса на матрицах с заданным размером
+        :param ksize: Possible values: 3, 5
+        """
+        return cv2.GaussianBlur(self.image_matrix, ksize=(ksize, ksize), sigmaX=0.4, sigmaY=0.4)
+
+    def average_filter(self, ksize=3):
+        """
+        Применяет усредненную фильтрацию на матрицах с заданным размером
+        :param ksize: 3
+        """
+        return cv2.blur(self.image_matrix, (ksize, ksize))
+
+    def sharpening_filter(self):
+        """
+        Фильтр увеличивает контраст соседних пикселей
+        """
+        gaussian_blur = cv2.GaussianBlur(self.image_matrix, (7,7), sigmaX=2)
+        return cv2.addWeighted(self.image_matrix, 1.5, gaussian_blur, -0.5, 0)
+
+    def histogram_equalization(self):
+        """
+        Изменение контрастности изображения с использованием гистограмм
+        """
+        return cv2.equalizeHist(self.image_matrix)
+
+    def gamma_correction(self, gamma=0.2):
+        """
+        Искажения яркости пикселей с использованием степенной функции с заданным параметром
+        :param gamma: Возможные параметры: 0.2, 0.4
+        """
+        inv_gamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        return cv2.LUT(self.image_matrix, table)
+
+    def gaussian_noise(self, n=0.001):
+        """
+        Нанесение статистического шума, имеющий плотность вероятности,
+        равную плотности вероятности нормального распределения
+        :param n: Возможные параметры: 0.001, 0.005, 0.009
+        """
+        noise = np.random.normal(0, 25, (512, 512)).astype(np.uint8)
+        binary = np.random.choice([0, 1], size=(512, 512), p=[1-n, n])
+
+        return self.image_matrix + np.multiply(noise, binary)
+
+    def salt_and_pepper_noise(self, n=0.01):
+        """
+        С заданной вероятностью затемняет или засвечивает пиксели изображения
+        :param n: Possible values: 0.01, 0.02, 0.03
+        """
+        binary = np.random.choice([0, 1], size=(512, 512), p=[n, 1 - n])
+        pepper = np.random.choice([0, 255], size=(512, 512), p=[0.5, 1 - 0.5])
+        noise = np.multiply(binary, pepper)
+
+        return np.multiply(binary, self.image_matrix) + noise
+
+    def cropping_quarter(self, place="center"):
+        """
+        В заданной области изображения затемняет или засвечивает 1/4 всех пикселей
+        :param place: Возможные параметры: center, top-left, bottom-right
+        """
+        pass
+
+    def scaling(self, size=1024):
+        """
+        Растягивает / сжимает изображения и возвращает к изначальным размерам с потерей качества
+        :param size: Возможные параметры: 1024 (512 -> 1024 -> 512), 256 (512 -> 245 -> 512)
+        """
+        pass
+
+    def rotation(self, degree=5):
+        """
+        Вращает изображение против часовой стрелки на заданный угол
+        :param degree: Возможные параметры: 5, 45, 90
+        """
+        pass
+
+    def compression(self, rate=70):
+        """
+        Применяет сжатие JPEG с заданным параметром
+        :param rate: Возможные параметры: 70, 80, 90
+        """
+        pass
