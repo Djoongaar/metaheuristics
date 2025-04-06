@@ -28,17 +28,6 @@ class Utilities:
         return np.sum(np.multiply(im1, im2)) / np.sum(np.multiply(im1, im1))
 
     @staticmethod
-    def compute_quality(im1: np.ndarray, im2: np.ndarray):
-        assert im1.shape == im2.shape == (512, 512)
-
-        gamma = 10
-        ssim = Utilities.get_ssim(im1, im2)
-        psnr = Utilities.get_psnr(im1, im2)
-        robust = Utilities.get_normal_correlation(im1, im2)
-
-        return gamma / psnr + 1 / ssim + 1 / robust
-
-    @staticmethod
     def get_image(image_path):
         im = Image.open(image_path)
         assert im.size[0] == im.size[1]
@@ -249,7 +238,9 @@ class Attack:
         self.rt5 = self.rotation()
         self.rt45 = self.rotation(angle=45)
         self.rt90 = self.rotation(angle=90)
-        self.spr70 = self.compression()
+        self.com70 = self.compression()
+        self.com80 = self.compression(quality=80)
+        self.com90 = self.compression(quality=90)
         self.crp_ct = self.cropping_quarter()
         self.crp_tl = self.cropping_quarter("top-left")
         self.crp_br = self.cropping_quarter("bottom-right")
