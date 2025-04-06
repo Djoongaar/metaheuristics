@@ -1,25 +1,47 @@
 import numpy as np
+import random
 from PIL import Image
 from scipy.linalg import hadamard
-from .utilities import Utilities, Attack
+from src import Utilities, Attack
 from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
 )
 
 
-class Watermark:
-    def __init__(self, image_path: str, embedded_image: str):
+class Firefly:
+    def __init__(self, image_path: str, embedded_image_path: str):
         self.image = Utilities.get_image(image_path)
         self.image_matrix = Utilities.image_to_matrix(self.image)
-        self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
         self.block_array = Utilities.crop_matrix(self.image_matrix)
-        self.embedded_image = Utilities.get_image(embedded_image)
+        self.embedded_image = Utilities.get_image(embedded_image_path)
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
-        self.embedding_threshold = 2
-        self.candidate_blocks = Utilities.get_block_candidates(self.block_array)
+        self.all_candidates = Utilities.get_all_candidates(self.block_array)
+        self.firefly_length = 1024
+        self.initial_population_size = 10
+        self.max_iterations = 100
+        self.initial_population = [self.random_candidates() for _ in range(self.initial_population_size)]
+        # self.optimize()
+
+    def random_candidates(self):
+        return random.sample(self.all_candidates, self.firefly_length)
+
+    def optimize(self):
+        for epoch in range(self.max_iterations):
+            print(epoch)
+
+class Watermark:
+    def __init__(self, image_path: str, embedded_image: str):
+        # self.image = Utilities.get_image(image_path)
+        # self.image_matrix = Utilities.image_to_matrix(self.image)
+        # self.block_array = Utilities.crop_matrix(self.image_matrix)
+        # self.embedded_image = Utilities.get_image(embedded_image)
+        # self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
+        # self.candidate_blocks = Utilities.get_block_candidates(self.block_array)
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
-        self.watermark_matrix = self.embedding(self.candidate_blocks[:1024])
+        self.embedding_threshold = 2
+        self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
+        self.watermark_matrix = self.embedding(self.candidate_blocks)
         self.watermark = Utilities.matrix_to_image(self.watermark_matrix)
         self.ssim = Utilities.get_ssim(self.image_matrix, self.watermark_matrix)
         self.psnr = Utilities.get_psnr(self.image_matrix, self.watermark_matrix)

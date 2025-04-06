@@ -181,12 +181,9 @@ class Utilities:
         return sorted(entropies, key=lambda d: d['entropy'])
 
     @staticmethod
-    def get_block_candidates(block_array):
-        embedded_image_size = 64 * 64
-        candidate_block_count = embedded_image_size // 2
+    def get_all_candidates(block_array):
         entropies = Utilities.get_entropies(block_array)
-
-        return entropies[:candidate_block_count]
+        return entropies[:(64 * 64) // 2]
 
     @staticmethod
     def extracting(watermark, secret_key):
