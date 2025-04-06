@@ -1,8 +1,9 @@
 import numpy as np
 import cv2
-
+import io
 from PIL import Image
 from scipy.linalg import hadamard
+from scipy.ndimage import rotate
 from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
@@ -229,6 +230,7 @@ class Utilities:
 
 class Attack:
     def __init__(self, image):
+        self.image = image
         self.image_matrix = Utilities.image_to_matrix(image)
         self.mf = self.median_filter()
         self.gs3 = self.gaussian_filter()
@@ -244,6 +246,10 @@ class Attack:
         self.sp1 = self.salt_and_pepper_noise()
         self.sp2 = self.salt_and_pepper_noise(n=0.02)
         self.sp3 = self.salt_and_pepper_noise(n=0.03)
+        self.rt5 = self.rotation()
+        self.rt45 = self.rotation(angle=45)
+        self.rt90 = self.rotation(angle=90)
+        self.spr70 = self.compression()
 
     def median_filter(self, ksize=3):
         """
@@ -296,18 +302,26 @@ class Attack:
         noise = np.random.normal(0, 25, (512, 512)).astype(np.uint8)
         binary = np.random.choice([0, 1], size=(512, 512), p=[1-n, n])
 
-        return self.image_matrix + np.multiply(noise, binary)
+        return np.array(self.image_matrix + np.multiply(noise, binary), dtype=np.uint8)
 
     def salt_and_pepper_noise(self, n=0.01):
         """
         С заданной вероятностью затемняет или засвечивает пиксели изображения
         :param n: Possible values: 0.01, 0.02, 0.03
         """
-        binary = np.random.choice([0, 1], size=(512, 512), p=[n, 1 - n])
-        pepper = np.random.choice([0, 255], size=(512, 512), p=[0.5, 1 - 0.5])
-        noise = np.multiply(binary, pepper)
+        # Pepper noise
+        binary = np.random.choice([0, 1], size=(512, 512), p=[1-n/2,n/2])
+        image_matrix = np.array(self.image_matrix, copy=True)
 
-        return np.multiply(binary, self.image_matrix) + noise
+        image_matrix = image_matrix - np.multiply(image_matrix, binary)
+
+        # Salt noise
+        binary = np.random.choice([0, 1], size=(512, 512), p=[1 - n / 2, n / 2])
+        salt = np.multiply(binary, 255)
+        sub = np.multiply(image_matrix, binary)
+        image_matrix = image_matrix - sub + salt
+
+        return np.array(image_matrix, dtype=np.uint8)
 
     def cropping_quarter(self, place="center"):
         """
@@ -323,16 +337,19 @@ class Attack:
         """
         pass
 
-    def rotation(self, degree=5):
+    def rotation(self, angle=5):
         """
         Вращает изображение против часовой стрелки на заданный угол
-        :param degree: Возможные параметры: 5, 45, 90
+        :param angle: Возможные параметры: 5, 45, 90
         """
-        pass
+        return np.array(rotate(self.image_matrix, angle=angle), dtype=np.uint8)
 
-    def compression(self, rate=70):
+    def compression(self, quality=70):
         """
-        Применяет сжатие JPEG с заданным параметром
-        :param rate: Возможные параметры: 70, 80, 90
+        Применяет сжатие JPEG с заданным параметром качества
+        :param quality: Возможные параметры: 70, 80, 90
         """
-        pass
+        buffered = io.BytesIO()
+        self.image.save(buffered, format="PNG", quality=quality)
+
+        return Utilities.image_to_matrix(Image.open(buffered))

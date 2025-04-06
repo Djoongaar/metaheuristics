@@ -89,4 +89,4 @@ class Watermark:
         return self.embedded_matrix
 
     def attack_and_extract(self):
-        return Utilities.matrix_to_image(Attack(self.watermark).gn1)
+        return Utilities.matrix_to_image( Attack(self.watermark).spr70)
