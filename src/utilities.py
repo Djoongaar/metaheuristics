@@ -250,6 +250,11 @@ class Attack:
         self.rt45 = self.rotation(angle=45)
         self.rt90 = self.rotation(angle=90)
         self.spr70 = self.compression()
+        self.crp_ct = self.cropping_quarter()
+        self.crp_tl = self.cropping_quarter("top-left")
+        self.crp_br = self.cropping_quarter("bottom-right")
+        self.scl_1024 = self.scaling()
+        self.scl_256 = self.scaling(size=256)
 
     def median_filter(self, ksize=3):
         """
@@ -328,14 +333,25 @@ class Attack:
         В заданной области изображения затемняет или засвечивает 1/4 всех пикселей
         :param place: Возможные параметры: center, top-left, bottom-right
         """
-        pass
+        displace = 128
+        if place == "top-left":
+            displace = 0
+        elif place == "bottom-right":
+            displace = 256
+        noise = np.ones(shape=(512,512), dtype=int)
+        for i in range(displace, displace + 256):
+            for j in range(displace, displace + 256):
+                noise[i][j] = 0
+
+        return np.array(np.multiply(self.image_matrix, noise), dtype=np.uint8)
 
     def scaling(self, size=1024):
         """
         Растягивает / сжимает изображения и возвращает к изначальным размерам с потерей качества
         :param size: Возможные параметры: 1024 (512 -> 1024 -> 512), 256 (512 -> 245 -> 512)
         """
-        pass
+        result = cv2.resize(self.image_matrix, (size, size), 2, 2, cv2.INTER_LINEAR)
+        return cv2.resize(result, (512, 512), 2, 2, cv2.INTER_LINEAR)
 
     def rotation(self, angle=5):
         """
