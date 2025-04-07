@@ -3,6 +3,7 @@ import random
 from PIL import Image
 from scipy.linalg import hadamard
 from src import Utilities, Attack
+from tqdm.notebook import tqdm, trange
 from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
@@ -18,26 +19,21 @@ class Firefly:
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
         self.firefly_length = 1024
-        self.initial_population_size = 10
+        self.population_size = 10
         self.max_iterations = 100
-        self.initial_population = [self.random_candidates() for _ in range(self.initial_population_size)]
-        # self.optimize()
+        self.population = [self.random_candidates() for _ in range(self.population_size)]
 
     def random_candidates(self):
         return random.sample(self.all_candidates, self.firefly_length)
 
-    def optimize(self):
-        for epoch in range(self.max_iterations):
-            print(epoch)
-
 class Watermark:
-    def __init__(self, image_path: str, embedded_image: str):
+    def __init__(self, candidate_blocks, embedded_image_bin, image_matrix):
         # self.image = Utilities.get_image(image_path)
-        # self.image_matrix = Utilities.image_to_matrix(self.image)
+        self.image_matrix = image_matrix
         # self.block_array = Utilities.crop_matrix(self.image_matrix)
         # self.embedded_image = Utilities.get_image(embedded_image)
-        # self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
-        # self.candidate_blocks = Utilities.get_block_candidates(self.block_array)
+        self.embedded_image_bin = embedded_image_bin
+        self.candidate_blocks = candidate_blocks
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
         self.embedding_threshold = 2
         self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
