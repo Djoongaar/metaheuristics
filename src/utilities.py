@@ -178,7 +178,11 @@ class Utilities:
                 'origin': block_array[i]
             })
 
-        return sorted(entropies, key=lambda d: d['entropy'])
+        sorted_entropies = sorted(entropies, key=lambda d: d['entropy'])
+        for num, i in enumerate(sorted_entropies):
+            i['sorted_i'] = num
+
+        return sorted_entropies
 
     @staticmethod
     def get_all_candidates(block_array):

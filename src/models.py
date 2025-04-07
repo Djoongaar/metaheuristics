@@ -28,10 +28,7 @@ class Firefly:
 
 class Watermark:
     def __init__(self, candidate_blocks, embedded_image_bin, image_matrix):
-        # self.image = Utilities.get_image(image_path)
         self.image_matrix = image_matrix
-        # self.block_array = Utilities.crop_matrix(self.image_matrix)
-        # self.embedded_image = Utilities.get_image(embedded_image)
         self.embedded_image_bin = embedded_image_bin
         self.candidate_blocks = candidate_blocks
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
