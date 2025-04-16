@@ -9,8 +9,7 @@ from skimage.metrics import (
     peak_signal_noise_ratio as psnr
 )
 
-
-class Firefly:
+class Algorithm:
     def __init__(self, image_path: str, embedded_image_path: str):
         self.image = Utilities.get_image(image_path)
         self.image_matrix = Utilities.image_to_matrix(self.image)
@@ -18,6 +17,46 @@ class Firefly:
         self.embedded_image = Utilities.get_image(embedded_image_path)
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
+
+
+class Genetic(Algorithm):
+
+    def __init__(self, image_path: str, embedded_image_path: str):
+        super().__init__(image_path, embedded_image_path)
+        self.population_size = 100
+        self.elite_size = 10
+        self.max_iterations = 100
+        self.chromosome_length = 2048
+        self.population_bin = [self.random_candidates() for _ in range(self.population_size)]
+        self.population = self.bin_to_index()
+
+    def random_candidates(self):
+        while True:
+            candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[1/2, 1/2])
+            if np.sum(candidate) == self.chromosome_length // 2:
+                return candidate
+
+    def bin_to_index(self):
+        result = []
+        for chromosome_bin in self.population_bin:
+            chromosome = []
+            for i in range(self.chromosome_length):
+                if chromosome_bin[i] == 1:
+                    chromosome.append(self.all_candidates[i])
+            result.append(chromosome)
+        return result
+
+    def index_to_bin(self):
+        pass
+
+    def breeding(self):
+        pass
+
+
+class Firefly(Algorithm):
+
+    def __init__(self, image_path: str, embedded_image_path: str):
+        super().__init__(image_path, embedded_image_path)
         self.firefly_length = 1024
         self.population_size = 10
         self.max_iterations = 100
@@ -27,6 +66,7 @@ class Firefly:
         return random.sample(self.all_candidates, self.firefly_length)
 
 class Watermark:
+
     def __init__(self, candidate_blocks, embedded_image_bin, image_matrix):
         self.image_matrix = image_matrix
         self.embedded_image_bin = embedded_image_bin

@@ -187,7 +187,7 @@ class Utilities:
     @staticmethod
     def get_all_candidates(block_array):
         entropies = Utilities.get_entropies(block_array)
-        return entropies[:(64 * 64) // 2]
+        return entropies[:2048]
 
     @staticmethod
     def extracting(watermark, secret_key):
