@@ -23,12 +23,15 @@ class Genetic(Algorithm):
 
     def __init__(self, image_path: str, embedded_image_path: str):
         super().__init__(image_path, embedded_image_path)
+        self.best_candidate = None
+        self.elite_candidates = []
         self.population_size = 100
         self.elite_size = 10
         self.max_iterations = 100
         self.chromosome_length = 2048
         self.population_bin = [self.random_candidates() for _ in range(self.population_size)]
         self.population = self.bin_to_index()
+        self.evaluation = self.evaluate_population()
 
     def random_candidates(self):
         while True:
@@ -45,6 +48,31 @@ class Genetic(Algorithm):
                     chromosome.append(self.all_candidates[i])
             result.append(chromosome)
         return result
+
+    def evaluate_population(self):
+        results = {}
+        for num, candidate in enumerate(self.population):
+            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix)
+            results[num] = {
+                'evaluation': watermark.evaluation
+            }
+            # Записываю лучшего кандидата и элитные особи
+            if self.best_candidate is None or self.best_candidate['evaluation'] > watermark.evaluation:
+                self.best_candidate = {
+                    'index': num,
+                    'evaluation': watermark.evaluation,
+                    'value': candidate
+                }
+            # Записываю элитные особи в список
+            # if len(self.elite_candidates) < self.elite_size:
+            #     # Если список элитных еще не полон, то добавить в него кандидата
+            #     # TODO: Реализовать функционал вставка в отсортированный список
+            #     pass
+            # if self.elite_candidates[-1] > watermark.evaluation:
+            #     # TODO: Вставка в отсортированный список
+            #     pass
+
+        return results
 
     def index_to_bin(self):
         pass
@@ -72,6 +100,7 @@ class Watermark:
         self.embedded_image_bin = embedded_image_bin
         self.candidate_blocks = candidate_blocks
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
+        # TODO: Подобрать параметр с помощью алгоритма светлячков (гибридная мета-эвристика)
         self.embedding_threshold = 2
         self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
         self.watermark_matrix = self.embedding(self.candidate_blocks)
@@ -150,38 +179,43 @@ class Watermark:
         # Произвожу разные атаки на стеганограмму и пытаюсь получить ЦВЗ
         attacked = Attack(self.watermark)
 
-        mf = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
-        gs3 = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
+        # mf = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
+        gs3 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs3), self.secret_key)
         gs5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs5), self.secret_key)
-        avr = Utilities.extracting(Utilities.matrix_to_image(attacked.avr), self.secret_key)
-        shr = Utilities.extracting(Utilities.matrix_to_image(attacked.shr), self.secret_key)
-        his = Utilities.extracting(Utilities.matrix_to_image(attacked.his), self.secret_key)
-        gc2 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc2), self.secret_key)
-        gc4 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc4), self.secret_key)
-        gn1 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn1), self.secret_key)
-        gn5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn5), self.secret_key)
-        gn9 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn9), self.secret_key)
-        sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
-        sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
-        sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
-        rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
-        rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
-        rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
-        com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
-        com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
-        com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
-        crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
-        crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
-        crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
-        scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
-        scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
+        # avr = Utilities.extracting(Utilities.matrix_to_image(attacked.avr), self.secret_key)
+        # shr = Utilities.extracting(Utilities.matrix_to_image(attacked.shr), self.secret_key)
+        # his = Utilities.extracting(Utilities.matrix_to_image(attacked.his), self.secret_key)
+        # gc2 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc2), self.secret_key)
+        # gc4 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc4), self.secret_key)
+        # gn1 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn1), self.secret_key)
+        # gn5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn5), self.secret_key)
+        # gn9 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn9), self.secret_key)
+        # sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
+        # sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
+        # sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
+        # rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
+        # rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
+        # rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
+        # com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
+        # com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
+        # com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
+        # crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
+        # crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
+        # crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
+        # scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
+        # scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
 
         # Считаю параметр нормальной корреляции для каждого полученного ЦВЗ
+        # nc = [
+        #     Utilities.get_normal_correlation(i, self.embedded_image_bin) for i in (
+        #         mf, gs3, gs5, avr, shr, his, gc2, gc4, gn1, gn5, gn9, sp1,
+        #         sp2, sp3, rt5, rt45, rt90, com70, com80, com90, crp_ct,
+        #         crp_tl, crp_br, scl_1024, scl_256
+        #     )
+        # ]
         nc = [
             Utilities.get_normal_correlation(i, self.embedded_image_bin) for i in (
-                mf, gs3, gs5, avr, shr, his, gc2, gc4, gn1, gn5, gn9, sp1,
-                sp2, sp3, rt5, rt45, rt90, com70, com80, com90, crp_ct,
-                crp_tl, crp_br, scl_1024, scl_256
+                gs3, gs5
             )
         ]
         # Вывожу среднее значение нормальной корреляции
