@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import bisect
 from PIL import Image
 from scipy.linalg import hadamard
 from src import Utilities, Attack
@@ -8,6 +9,7 @@ from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
 )
+
 
 class Algorithm:
     def __init__(self, image_path: str, embedded_image_path: str):
@@ -26,18 +28,17 @@ class Genetic(Algorithm):
         self.best_candidate = None
         self.elite_candidates = []
         self.population_size = 100
-        self.elite_size = 10
-        self.max_iterations = 100
+        self.elite_size = 20
+        self.max_iterations = 20
         self.chromosome_length = 2048
         self.population_bin = [self.random_candidates() for _ in range(self.population_size)]
         self.population = self.bin_to_index()
         self.evaluation = self.evaluate_population()
+        self.breeding()
 
     def random_candidates(self):
-        while True:
-            candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[1/2, 1/2])
-            if np.sum(candidate) == self.chromosome_length // 2:
-                return candidate
+        candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[1 / 2, 1 / 2])
+        return Utilities.mutate(candidate)
 
     def bin_to_index(self):
         result = []
@@ -50,35 +51,54 @@ class Genetic(Algorithm):
         return result
 
     def evaluate_population(self):
-        results = {}
+        results = []
         for num, candidate in enumerate(self.population):
             watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix)
-            results[num] = {
-                'evaluation': watermark.evaluation
+            watermark_data = {
+                'index': num,
+                'evaluation': watermark.evaluation,
+                'ssim': watermark.ssim,
+                'psnr': watermark.psnr,
+                'value': self.population_bin[num]
             }
-            # Записываю лучшего кандидата и элитные особи
-            if self.best_candidate is None or self.best_candidate['evaluation'] > watermark.evaluation:
-                self.best_candidate = {
-                    'index': num,
-                    'evaluation': watermark.evaluation,
-                    'value': candidate
-                }
-            # Записываю элитные особи в список
-            # if len(self.elite_candidates) < self.elite_size:
-            #     # Если список элитных еще не полон, то добавить в него кандидата
-            #     # TODO: Реализовать функционал вставка в отсортированный список
-            #     pass
-            # if self.elite_candidates[-1] > watermark.evaluation:
-            #     # TODO: Вставка в отсортированный список
-            #     pass
+            results.append(watermark_data)
 
-        return results
+            if (len(self.elite_candidates) < self.elite_size or
+                    self.elite_candidates[-1]['evaluation'] > watermark_data['evaluation']):
+                bisect.insort(self.elite_candidates, watermark_data, key=lambda x: x['evaluation'])
 
-    def index_to_bin(self):
-        pass
+        self.elite_candidates = self.elite_candidates[:self.elite_size]
+        results = sorted(results, key=lambda x: x['evaluation'])
+        self.best_candidate = self.elite_candidates[0]
+
+        print('Best score: ', self.best_candidate)
+        return results[:self.population_size - self.elite_size]
 
     def breeding(self):
-        pass
+        for _ in range(self.max_iterations):
+            new_population = []
+            new_population.extend([i['value'] for i in self.evaluation])
+            new_population.extend([i['value'] for i in self.elite_candidates])
+            new_population = random.sample(new_population, len(new_population))
+
+            self.population_bin = []
+
+            for i in range(0, len(new_population), 2):
+                child_1 = np.concatenate((
+                    new_population[i][:self.chromosome_length // 4],  # [0:1/4]
+                    new_population[i + 1][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
+                    new_population[i][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+                ))
+                child_2 = np.concatenate((
+                    new_population[i + 1][:self.chromosome_length // 4],  # [0:1/4]
+                    new_population[i][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
+                    new_population[i + 1][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+                ))
+                self.population_bin.append(Utilities.mutate(child_1))
+                self.population_bin.append(Utilities.mutate(child_2))
+
+            self.population = self.bin_to_index()
+            self.evaluation = self.evaluate_population()
 
 
 class Firefly(Algorithm):
@@ -92,6 +112,7 @@ class Firefly(Algorithm):
 
     def random_candidates(self):
         return random.sample(self.all_candidates, self.firefly_length)
+
 
 class Watermark:
 
@@ -132,7 +153,7 @@ class Watermark:
         for i in range(64):
             for j in range(64):
                 bit_count = i * 64 + j
-                block_count = bit_count  // 4
+                block_count = bit_count // 4
                 bit_num = bit_count % 4
                 block = self.candidate_blocks[block_count]
                 new_pix = Utilities.get_avg(block['hadamard'], bit_num)

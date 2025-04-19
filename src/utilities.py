@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import cv2
 import io
 from PIL import Image
@@ -17,7 +18,7 @@ class Utilities:
 
     @staticmethod
     def get_ssim(im1, im2):
-        return ssim(im1, im2)
+        return ssim(im1, im2, data_range=255)
 
     @staticmethod
     def get_psnr(im1, im2):
@@ -133,22 +134,51 @@ class Utilities:
         assert matrix.shape == (8, 8)
 
         if bit_num == 0:
-            i, j = 2, 1
+            m = np.array([
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0]
+            ])
         elif bit_num == 1:
-            i, j = 2, 5
+            m = np.array([
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 1, 1, 1, 0],
+                [0, 0, 0, 0, 1, 0, 1, 0],
+                [0, 0, 0, 0, 1, 1, 1, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0]
+            ])
         elif bit_num == 2:
-            i, j = 6, 1
+            m = np.array([
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0, 0]
+            ])
         else:
-            i, j = 6, 5
+            m = np.array([
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 1, 1, 1, 0],
+                [0, 0, 0, 0, 1, 0, 1, 0],
+                [0, 0, 0, 0, 1, 1, 1, 0]
+            ])
 
-        return (matrix[i-1][j-1] +
-            matrix[i-1][j] +
-            matrix[i-1][j+1] +
-            matrix[i][j-1] +
-            matrix[i][j+1] +
-            matrix[i+1][j-1] +
-            matrix[i+1][j] +
-            matrix[i+1][j+1]) / 8
+        return np.sum(np.multiply(matrix, m)) / 8
 
     @staticmethod
     def insert_new_pixel(block, new_pix, bit_num):
@@ -217,6 +247,17 @@ class Utilities:
                     result[i][j + 3] = 1 if hadamard[6][5] >= Utilities.get_avg(hadamard, 3) else 0
 
         return result
+
+    @staticmethod
+    def mutate(arr):
+        while True:
+            ind = random.randrange(0, 2048)
+            if sum(arr) > 1024:
+                arr[ind] = 0
+            elif sum(arr) < 1024:
+                arr[ind] = 1
+            else:
+                return arr
 
 class Attack:
     def __init__(self, image):
