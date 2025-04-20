@@ -1,2 +1,2 @@
 from src.utilities import Utilities, Attack
-from src.models import Watermark, Firefly, Genetic
+from src.models import Watermark, HybridMetaheuristic

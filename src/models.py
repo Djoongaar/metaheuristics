@@ -11,7 +11,7 @@ from skimage.metrics import (
 )
 
 
-class Algorithm:
+class Base:
     def __init__(self, image_path: str, embedded_image_path: str):
         self.image = Utilities.get_image(image_path)
         self.image_matrix = Utilities.image_to_matrix(self.image)
@@ -21,20 +21,35 @@ class Algorithm:
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
 
 
-class Genetic(Algorithm):
+class Firefly:
 
-    def __init__(self, image_path: str, embedded_image_path: str):
-        super().__init__(image_path, embedded_image_path)
+    def __init__(self):
+        self.firefly_min = 0.1
+        self.firefly_max = 4.9
+        self.best_firefly = round((self.firefly_min + self.firefly_max) / 2, 1)
+        self.firefly_population_size = 20
+        self.firefly_population = sorted([self.random_firefly() for _ in range(self.firefly_population_size)])
+
+    def random_firefly(self):
+        return random.uniform(self.firefly_min, self.firefly_max)
+
+    def run_fireflies(self):
+        # self.generation[self.best_candidate['index']]
+
+        pass
+
+
+class Genetic:
+
+    def __init__(self):
         self.best_candidate = None
         self.elite_candidates = []
-        self.population_size = 100
+        self.generation_size = 100
         self.elite_size = 20
-        self.max_iterations = 20
+        self.max_generations = 20
         self.chromosome_length = 2048
-        self.population_bin = [self.random_candidates() for _ in range(self.population_size)]
-        self.population = self.bin_to_index()
-        self.evaluation = self.evaluate_population()
-        self.breeding()
+        self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
+        self.generation = self.bin_to_index()
 
     def random_candidates(self):
         candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[1 / 2, 1 / 2])
@@ -42,7 +57,7 @@ class Genetic(Algorithm):
 
     def bin_to_index(self):
         result = []
-        for chromosome_bin in self.population_bin:
+        for chromosome_bin in self.generation_bin:
             chromosome = []
             for i in range(self.chromosome_length):
                 if chromosome_bin[i] == 1:
@@ -50,86 +65,99 @@ class Genetic(Algorithm):
             result.append(chromosome)
         return result
 
-    def evaluate_population(self):
+    def crossing(self):
+        new_generation = []
+        new_generation.extend([i['value'] for i in self.last_score])
+        new_generation.extend([i['value'] for i in self.elite_candidates])
+        new_generation = random.sample(new_generation, len(new_generation))
+
+        self.generation_bin = []
+
+        for i in range(0, len(new_generation), 2):
+            child_1 = np.concatenate((
+                new_generation[i][:self.chromosome_length // 4],  # [0:1/4]
+                new_generation[i + 1][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
+                new_generation[i][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+            ))
+            child_2 = np.concatenate((
+                new_generation[i + 1][:self.chromosome_length // 4],  # [0:1/4]
+                new_generation[i][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
+                new_generation[i + 1][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+            ))
+            self.generation_bin.append(Utilities.mutate(child_1))
+            self.generation_bin.append(Utilities.mutate(child_2))
+
+        self.generation = self.bin_to_index()
+
+
+class HybridMetaheuristic(Base, Genetic, Firefly):
+
+    def __init__(self, image_path, embedded_image_path):
+        Base.__init__(self, image_path, embedded_image_path)
+        Genetic.__init__(self)
+        Firefly.__init__(self)
+        self.last_score = None
+        self.best_score = None
+
+    def evaluate(self):
         results = []
-        for num, candidate in enumerate(self.population):
-            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix)
+        for num, candidate in enumerate(self.generation):
+            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly)
             watermark_data = {
                 'index': num,
-                'evaluation': watermark.evaluation,
+                'score': watermark.score,
                 'ssim': watermark.ssim,
                 'psnr': watermark.psnr,
-                'value': self.population_bin[num]
+                'value': self.generation_bin[num],
+                'nc': watermark.avg_nc
             }
             results.append(watermark_data)
 
             if (len(self.elite_candidates) < self.elite_size or
-                    self.elite_candidates[-1]['evaluation'] > watermark_data['evaluation']):
-                bisect.insort(self.elite_candidates, watermark_data, key=lambda x: x['evaluation'])
+                    self.elite_candidates[-1]['score'] > watermark_data['score']):
+                bisect.insort(self.elite_candidates, watermark_data, key=lambda x: x['score'])
 
         self.elite_candidates = self.elite_candidates[:self.elite_size]
-        results = sorted(results, key=lambda x: x['evaluation'])
+        results = sorted(results, key=lambda x: x['score'])
         self.best_candidate = self.elite_candidates[0]
 
-        print('Best score: ', self.best_candidate)
-        return results[:self.population_size - self.elite_size]
+        ### Printing intermediate results during iterations
+        print(
+            'Best: ',
+            'score=', round(self.best_candidate['score'], 3),
+            '; ssim=', round(self.best_candidate['ssim'], 3),
+            '; psnr=', round(self.best_candidate['psnr'], 3),
+            '; nc=', round(self.best_candidate['nc'], 3),
+            '; th=', self.best_firefly
+        )
 
-    def breeding(self):
-        for _ in range(self.max_iterations):
-            new_population = []
-            new_population.extend([i['value'] for i in self.evaluation])
-            new_population.extend([i['value'] for i in self.elite_candidates])
-            new_population = random.sample(new_population, len(new_population))
+        return results[:self.generation_size - self.elite_size]
 
-            self.population_bin = []
+    def evolution(self):
+        self.last_score = self.evaluate()
 
-            for i in range(0, len(new_population), 2):
-                child_1 = np.concatenate((
-                    new_population[i][:self.chromosome_length // 4],  # [0:1/4]
-                    new_population[i + 1][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
-                    new_population[i][self.chromosome_length * 3 // 4:]  # [3/4:-1]
-                ))
-                child_2 = np.concatenate((
-                    new_population[i + 1][:self.chromosome_length // 4],  # [0:1/4]
-                    new_population[i][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
-                    new_population[i + 1][self.chromosome_length * 3 // 4:]  # [3/4:-1]
-                ))
-                self.population_bin.append(Utilities.mutate(child_1))
-                self.population_bin.append(Utilities.mutate(child_2))
-
-            self.population = self.bin_to_index()
-            self.evaluation = self.evaluate_population()
-
-
-class Firefly(Algorithm):
-
-    def __init__(self, image_path: str, embedded_image_path: str):
-        super().__init__(image_path, embedded_image_path)
-        self.firefly_length = 1024
-        self.population_size = 10
-        self.max_iterations = 100
-        self.population = [self.random_candidates() for _ in range(self.population_size)]
-
-    def random_candidates(self):
-        return random.sample(self.all_candidates, self.firefly_length)
+        for _ in range(self.max_generations):
+            self.crossing()
+            self.last_score = self.evaluate()
+            self.run_fireflies()
 
 
 class Watermark:
 
-    def __init__(self, candidate_blocks, embedded_image_bin, image_matrix):
+    def __init__(self, candidate_blocks, embedded_image_bin, image_matrix, threshold):
         self.image_matrix = image_matrix
         self.embedded_image_bin = embedded_image_bin
         self.candidate_blocks = candidate_blocks
         self.secret_key = np.zeros(shape=(64, 64), dtype=float)
-        # TODO: Подобрать параметр с помощью алгоритма светлячков (гибридная мета-эвристика)
-        self.embedding_threshold = 2
+        self.embedding_threshold = threshold
         self.embedded_matrix = np.zeros(shape=(512, 512), dtype=int)
         self.watermark_matrix = self.embedding(self.candidate_blocks)
         self.watermark = Utilities.matrix_to_image(self.watermark_matrix)
+        self.avg_nc = None
         self.ssim = Utilities.get_ssim(self.image_matrix, self.watermark_matrix)
         self.psnr = Utilities.get_psnr(self.image_matrix, self.watermark_matrix)
         self.extracted_image_bin = Utilities.extracting(self.watermark, self.secret_key)
-        self.evaluation = self.evaluate()
+        self.score = self.get_score()
 
     def build_matrix(self):
         """ Воссоздает матрицу размером 512 х 512 из массива блоков (4096, 8, 8) """
@@ -193,7 +221,7 @@ class Watermark:
         # Шаг 5. Из матрицы размерностью 512 х 512 восстанавливаем и возвращаем изображение PNG
         return self.embedded_matrix
 
-    def evaluate(self):
+    def get_score(self):
         # Согласно статье принимаем параметр гамма за 10
         gamma = 10
 
@@ -240,7 +268,7 @@ class Watermark:
             )
         ]
         # Вывожу среднее значение нормальной корреляции
-        avg_nc = sum(nc) / len(nc)
+        self.avg_nc = sum(nc) / len(nc)
 
         # Возвращаю значение целевой функции
-        return gamma / self.psnr + 1 / self.ssim + 1 / avg_nc
+        return gamma / self.psnr + 1 / self.ssim + 1 / self.avg_nc
