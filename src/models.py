@@ -49,7 +49,6 @@ class Firefly:
 
     def fireflies(self):
         candidate = self.generation[self.best_candidate['index']]
-        old_val = self.best_firefly['value']
 
         # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_stop_iterations
         if self.firefly_stop_iterations >= self.firefly_iteration_max:
@@ -60,8 +59,12 @@ class Firefly:
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
                 attract = self.firefly_population[i]['attract']
+
                 watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
                 watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
+
+                self.firefly_population[i]['score'] = watermark_i.score
+                self.firefly_population[j]['score'] = watermark_j.score
 
                 # Выполняем шаг только если разница между оценкой качества выше 0.0001
                 if (watermark_j.score - watermark_i.score) > 0.0001:
@@ -70,7 +73,9 @@ class Firefly:
                     step = self.alpha * self.firefly_max
                     val_j_new = val_j + attract * (val_i - val_j) + step
                     self.firefly_population[j]['value'] = val_j_new
+                    self.firefly_population[i]['attract'] = attract
 
+                    # Вывод промежуточных параметров алгоритма
                     # print(f"val_i={round(val_i, 2)}; "
                     #       f"val_j={round(val_j, 2)}; "
                     #       f"r={round(r, 2)}; "
@@ -86,20 +91,18 @@ class Firefly:
                             'score': watermark_i.score,
                             'attract': attract
                         }
+                    # Сохраняю эволюцию светлячков для дальнейшей визуализации
+                    # print([round(i['value'], 2) for i in self.firefly_population])
 
-        # Проверяем изменилось ли значение self.best_firefly
-        # Если не изменилось то инкрементим счетчик self.firefly_stop_iterations
-        new_val = self.best_firefly['value']
-        if old_val == new_val:
-            self.firefly_stop_iterations += 1
-        else:
-            self.firefly_stop_iterations = 0
+        # Увеличиваем счетчик self.firefly_stop_iterations
+        self.firefly_stop_iterations += 1
 
 
 class Genetic:
 
     def __init__(self):
         self.best_candidate = None
+        self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
         self.elite_size = 20
@@ -150,8 +153,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         Genetic.__init__(self)
         Firefly.__init__(self)
         self.max_generations = 30
+        self.genetic_evolution = []
         self.last_score = None
-        self.best_score = None
 
     def evaluate(self):
         results = []
@@ -175,22 +178,31 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
         self.elite_candidates = self.elite_candidates[:self.elite_size]
         results = sorted(results, key=lambda x: x['score'])
-        self.best_candidate = self.elite_candidates[0]
 
+        # Переопределяем лучшего кандидата и записываем индексы блоков
+        self.best_candidate = self.elite_candidates[0]
+        self.best_candidate_indexes = []
+
+        for num, i in enumerate(self.best_candidate['value']):
+            if i:
+                self.best_candidate_indexes.append(self.all_candidates[num])
+
+        best_candidate = {
+            'score': round(self.best_candidate['score'], 2),
+            'ssim': round(self.best_candidate['ssim'], 2),
+            'psnr': round(self.best_candidate['psnr'], 2),
+            'nc': round(self.best_candidate['nc'], 2),
+            'th': round(self.best_firefly['value'], 2)
+        }
         ### Printing intermediate results during iterations
-        print(
-            'Best:',
-            'score=', round(self.best_candidate['score'], 3),
-            '; ssim=', round(self.best_candidate['ssim'], 3),
-            '; psnr=', round(self.best_candidate['psnr'], 3),
-            '; nc=', round(self.best_candidate['nc'], 3),
-            '; th=', round(self.best_firefly['value'], 3)
-        )
+        self.genetic_evolution.append(best_candidate)
+        print(best_candidate)
 
         self.last_score = results[:self.generation_size - self.elite_size]
 
     def evolution(self):
-        for _ in tqdm(range(self.max_generations)):
+        for _ in range(self.max_generations):
+        # for _ in tqdm(range(self.max_generations)):
             self.evaluate()
             self.crossing()
             self.fireflies()
@@ -282,45 +294,41 @@ class Watermark:
         # Произвожу разные атаки на стеганограмму и пытаюсь получить ЦВЗ
         attacked = Attack(self.watermark)
 
-        # mf = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
+        mf = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
         gs3 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs3), self.secret_key)
         gs5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs5), self.secret_key)
-        # avr = Utilities.extracting(Utilities.matrix_to_image(attacked.avr), self.secret_key)
-        # shr = Utilities.extracting(Utilities.matrix_to_image(attacked.shr), self.secret_key)
-        # his = Utilities.extracting(Utilities.matrix_to_image(attacked.his), self.secret_key)
-        # gc2 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc2), self.secret_key)
-        # gc4 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc4), self.secret_key)
-        # gn1 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn1), self.secret_key)
-        # gn5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn5), self.secret_key)
-        # gn9 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn9), self.secret_key)
-        # sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
-        # sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
-        # sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
-        # rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
-        # rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
-        # rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
-        # com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
-        # com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
-        # com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
-        # crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
-        # crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
-        # crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
-        # scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
-        # scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
+        avr = Utilities.extracting(Utilities.matrix_to_image(attacked.avr), self.secret_key)
+        shr = Utilities.extracting(Utilities.matrix_to_image(attacked.shr), self.secret_key)
+        his = Utilities.extracting(Utilities.matrix_to_image(attacked.his), self.secret_key)
+        gc2 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc2), self.secret_key)
+        gc4 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc4), self.secret_key)
+        gn1 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn1), self.secret_key)
+        gn5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn5), self.secret_key)
+        gn9 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn9), self.secret_key)
+        sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
+        sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
+        sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
+        rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
+        rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
+        rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
+        com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
+        com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
+        com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
+        crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
+        crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
+        crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
+        scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
+        scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
 
         # Считаю параметр нормальной корреляции для каждого полученного ЦВЗ
-        # nc = [
-        #     Utilities.get_normal_correlation(i, self.embedded_image_bin) for i in (
-        #         mf, gs3, gs5, avr, shr, his, gc2, gc4, gn1, gn5, gn9, sp1,
-        #         sp2, sp3, rt5, rt45, rt90, com70, com80, com90, crp_ct,
-        #         crp_tl, crp_br, scl_1024, scl_256
-        #     )
-        # ]
         nc = [
             Utilities.get_normal_correlation(i, self.embedded_image_bin) for i in (
-                gs3, gs5
+                mf, gs3, gs5, avr, shr, his, gc2, gc4, gn1, gn5, gn9, sp1,
+                sp2, sp3, rt5, rt45, rt90, com70, com80, com90, crp_ct,
+                crp_tl, crp_br, scl_1024, scl_256
             )
         ]
+
         # Вывожу среднее значение нормальной корреляции
         self.avg_nc = sum(nc) / len(nc)
 
