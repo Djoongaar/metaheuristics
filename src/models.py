@@ -4,7 +4,7 @@ import bisect
 from PIL import Image
 from scipy.linalg import hadamard
 from src import Utilities, Attack
-from tqdm.notebook import tqdm, trange
+from tqdm import tqdm
 from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
@@ -24,19 +24,76 @@ class Base:
 class Firefly:
 
     def __init__(self):
-        self.firefly_min = 0.1
-        self.firefly_max = 4.9
-        self.best_firefly = round((self.firefly_min + self.firefly_max) / 2, 1)
-        self.firefly_population_size = 20
-        self.firefly_population = sorted([self.random_firefly() for _ in range(self.firefly_population_size)])
+        self.alpha = 0.01
+        self.beta0 = 1.0
+        self.gamma = 0.01
+        self.theta = 0.97
+        self.firefly_min = 0
+        self.firefly_max = 20
+        self.firefly_stop_iterations = 0
+        self.firefly_iteration_max = 3
+        self.firefly_stop = False
+        self.best_firefly = None
+        self.best_firefly_score = None
+        self.firefly_population_size = 10
+        self.firefly_population = self.init_fireflies()
 
-    def random_firefly(self):
-        return random.uniform(self.firefly_min, self.firefly_max)
+    def init_fireflies(self):
+        return [
+            {
+                'value': i,
+                'score': None,
+                'attract': self.beta0
+            } for i in range(self.firefly_min, self.firefly_max, 2)
+        ]
 
-    def run_fireflies(self):
-        # self.generation[self.best_candidate['index']]
+    def fireflies(self):
+        candidate = self.generation[self.best_candidate['index']]
+        old_val = self.best_firefly['value']
 
-        pass
+        # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_stop_iterations
+        if self.firefly_stop_iterations >= self.firefly_iteration_max:
+            return
+
+        for i in range(self.firefly_population_size):
+            for j in range(self.firefly_population_size):
+                val_i = self.firefly_population[i]['value']
+                val_j = self.firefly_population[j]['value']
+                attract = self.firefly_population[i]['attract']
+                watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
+                watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
+
+                # Выполняем шаг только если разница между оценкой качества выше 0.0001
+                if (watermark_j.score - watermark_i.score) > 0.0001:
+                    r = val_i - val_j
+                    attract = attract * np.exp(-self.gamma * r ** 2)
+                    step = self.alpha * self.firefly_max
+                    val_j_new = val_j + attract * (val_i - val_j) + step
+                    self.firefly_population[j]['value'] = val_j_new
+
+                    # print(f"val_i={round(val_i, 2)}; "
+                    #       f"val_j={round(val_j, 2)}; "
+                    #       f"r={round(r, 2)}; "
+                    #       f"attr={round(attract, 2)}; "
+                    #       f"step={round(step, 2)}; "
+                    #       f"new_j={round(val_j_new, 2)}")
+
+                    # Если оценка улучшилась - обновляем self.best_firefly,
+                    # а иначе увеличиваем счетчик self.firefly_stop_iterations
+                    if self.best_firefly['score'] is None or self.best_firefly['score'] > watermark_i.score:
+                        self.best_firefly = {
+                            'value': val_i,
+                            'score': watermark_i.score,
+                            'attract': attract
+                        }
+
+        # Проверяем изменилось ли значение self.best_firefly
+        # Если не изменилось то инкрементим счетчик self.firefly_stop_iterations
+        new_val = self.best_firefly['value']
+        if old_val == new_val:
+            self.firefly_stop_iterations += 1
+        else:
+            self.firefly_stop_iterations = 0
 
 
 class Genetic:
@@ -46,7 +103,6 @@ class Genetic:
         self.elite_candidates = []
         self.generation_size = 100
         self.elite_size = 20
-        self.max_generations = 20
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
         self.generation = self.bin_to_index()
@@ -70,9 +126,7 @@ class Genetic:
         new_generation.extend([i['value'] for i in self.last_score])
         new_generation.extend([i['value'] for i in self.elite_candidates])
         new_generation = random.sample(new_generation, len(new_generation))
-
         self.generation_bin = []
-
         for i in range(0, len(new_generation), 2):
             child_1 = np.concatenate((
                 new_generation[i][:self.chromosome_length // 4],  # [0:1/4]
@@ -89,20 +143,22 @@ class Genetic:
 
         self.generation = self.bin_to_index()
 
-
 class HybridMetaheuristic(Base, Genetic, Firefly):
 
     def __init__(self, image_path, embedded_image_path):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
         Firefly.__init__(self)
+        self.max_generations = 30
         self.last_score = None
         self.best_score = None
 
     def evaluate(self):
         results = []
         for num, candidate in enumerate(self.generation):
-            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly)
+            if self.best_firefly is None:
+                self.best_firefly = {'value': (self.firefly_min + self.firefly_max) / 2, 'score': None, 'attract': 0}
+            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly['value'])
             watermark_data = {
                 'index': num,
                 'score': watermark.score,
@@ -123,23 +179,21 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
         ### Printing intermediate results during iterations
         print(
-            'Best: ',
+            'Best:',
             'score=', round(self.best_candidate['score'], 3),
             '; ssim=', round(self.best_candidate['ssim'], 3),
             '; psnr=', round(self.best_candidate['psnr'], 3),
             '; nc=', round(self.best_candidate['nc'], 3),
-            '; th=', self.best_firefly
+            '; th=', round(self.best_firefly['value'], 3)
         )
 
-        return results[:self.generation_size - self.elite_size]
+        self.last_score = results[:self.generation_size - self.elite_size]
 
     def evolution(self):
-        self.last_score = self.evaluate()
-
-        for _ in range(self.max_generations):
+        for _ in tqdm(range(self.max_generations)):
+            self.evaluate()
             self.crossing()
-            self.last_score = self.evaluate()
-            self.run_fireflies()
+            self.fireflies()
 
 
 class Watermark:
