@@ -35,30 +35,39 @@ class Firefly:
         self.firefly_stop = False
         self.best_firefly = None
         self.best_firefly_score = None
-        self.firefly_population_size = 10
-        self.firefly_population = self.init_fireflies()
+        self.firefly_elite_size = 3
+        self.firefly_population = []
 
     def init_fireflies(self):
         return [
             {
-                'value': i,
+                'value': np.random.uniform(self.firefly_min, self.firefly_max),
                 'score': None,
                 'attract': self.beta0
-            } for i in range(self.firefly_min, self.firefly_max, 2)
+            } for _ in range(self.firefly_min, self.firefly_max)
         ]
 
     def fireflies(self):
         candidate = self.generation[self.best_candidate['index']]
 
+        # Инициализация популяции светлячков
+        self.firefly_population = self.init_fireflies()
+
+        # Если были предыдущие итерации, то добавляем в популяцию лучшее решение (элитные особи)
+        if self.best_firefly is not None:
+            for _ in range(self.firefly_elite_size):
+                self.firefly_population[random.randint(0, len(self.firefly_population) - 1)]['value'] = \
+                    self.best_firefly['value']
+
         # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_stop_iterations
         if self.firefly_stop_iterations >= self.firefly_iteration_max:
             return
 
-        for i in range(self.firefly_population_size):
-            for j in range(self.firefly_population_size):
+        for i in range(len(self.firefly_population)):
+            for j in range(len(self.firefly_population)):
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
-                attract = self.firefly_population[i]['attract']
+
 
                 watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
                 watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
@@ -66,33 +75,44 @@ class Firefly:
                 self.firefly_population[i]['score'] = watermark_i.score
                 self.firefly_population[j]['score'] = watermark_j.score
 
-                # Выполняем шаг только если разница между оценкой качества выше 0.0001
-                if (watermark_j.score - watermark_i.score) > 0.0001:
+                # Выполняем шаг полета светлячка
+
+
+                step = self.alpha * self.firefly_max
+
+                if watermark_j.score > watermark_i.score:
                     r = val_i - val_j
+                    attract = self.firefly_population[i]['attract']
                     attract = attract * np.exp(-self.gamma * r ** 2)
-                    step = self.alpha * self.firefly_max
+
                     val_j_new = val_j + attract * (val_i - val_j) + step
                     self.firefly_population[j]['value'] = val_j_new
                     self.firefly_population[i]['attract'] = attract
 
-                    # Вывод промежуточных параметров алгоритма
-                    # print(f"val_i={round(val_i, 2)}; "
-                    #       f"val_j={round(val_j, 2)}; "
-                    #       f"r={round(r, 2)}; "
-                    #       f"attr={round(attract, 2)}; "
-                    #       f"step={round(step, 2)}; "
-                    #       f"new_j={round(val_j_new, 2)}")
-
                     # Если оценка улучшилась - обновляем self.best_firefly,
                     # а иначе увеличиваем счетчик self.firefly_stop_iterations
                     if self.best_firefly['score'] is None or self.best_firefly['score'] > watermark_i.score:
-                        self.best_firefly = {
-                            'value': val_i,
-                            'score': watermark_i.score,
-                            'attract': attract
-                        }
-                    # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                    # print([round(i['value'], 2) for i in self.firefly_population])
+                        self.best_firefly = self.firefly_population[i]
+
+                        # Сохраняю эволюцию светлячков для дальнейшей визуализации
+                        print('Firefly:', self.best_firefly)
+
+                elif watermark_j.score < watermark_i.score:
+                    r = val_j - val_i
+                    attract = self.firefly_population[j]['attract']
+                    attract = attract * np.exp(-self.gamma * r ** 2)
+
+                    val_i_new = val_i + attract * (val_j - val_i) + step
+                    self.firefly_population[i]['value'] = val_i_new
+                    self.firefly_population[j]['attract'] = attract
+
+                    # Если оценка улучшилась - обновляем self.best_firefly,
+                    # а иначе увеличиваем счетчик self.firefly_stop_iterations
+                    if self.best_firefly['score'] is None or self.best_firefly['score'] > watermark_j.score:
+                        self.best_firefly = self.firefly_population[j]
+
+                        # Сохраняю эволюцию светлячков для дальнейшей визуализации
+                        print('Firefly:', self.best_firefly)
 
         # Увеличиваем счетчик self.firefly_stop_iterations
         self.firefly_stop_iterations += 1
@@ -146,13 +166,14 @@ class Genetic:
 
         self.generation = self.bin_to_index()
 
+
 class HybridMetaheuristic(Base, Genetic, Firefly):
 
     def __init__(self, image_path, embedded_image_path):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
         Firefly.__init__(self)
-        self.max_generations = 30
+        self.max_generations = 20
         self.genetic_evolution = []
         self.last_score = None
 
@@ -188,21 +209,21 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                 self.best_candidate_indexes.append(self.all_candidates[num])
 
         best_candidate = {
-            'score': round(self.best_candidate['score'], 2),
-            'ssim': round(self.best_candidate['ssim'], 2),
+            'score': round(self.best_candidate['score'], 4),
+            'ssim': round(self.best_candidate['ssim'], 4),
             'psnr': round(self.best_candidate['psnr'], 2),
-            'nc': round(self.best_candidate['nc'], 2),
+            'nc': round(self.best_candidate['nc'], 4),
             'th': round(self.best_firefly['value'], 2)
         }
         ### Printing intermediate results during iterations
         self.genetic_evolution.append(best_candidate)
-        print(best_candidate)
+        print('Genetic:', best_candidate)
 
         self.last_score = results[:self.generation_size - self.elite_size]
 
     def evolution(self):
         for _ in range(self.max_generations):
-        # for _ in tqdm(range(self.max_generations)):
+            # for _ in tqdm(range(self.max_generations)):
             self.evaluate()
             self.crossing()
             self.fireflies()
@@ -308,17 +329,17 @@ class Watermark:
         sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
         sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
         sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
+        crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
+        crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
+        crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
+        scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
+        scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
         rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
         rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
         rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
         com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
         com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
         com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
-        crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
-        crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
-        crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
-        scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
-        scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
 
         # Считаю параметр нормальной корреляции для каждого полученного ЦВЗ
         nc = [

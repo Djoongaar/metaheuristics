@@ -22,7 +22,7 @@ class Utilities:
 
     @staticmethod
     def get_psnr(im1, im2):
-        return psnr(im1, im2)
+        return psnr(im1, im2, data_range=255)
 
     @staticmethod
     def get_normal_correlation(im1, im2):
@@ -114,20 +114,19 @@ class Utilities:
 
         return np.sum(items)
 
-
     @staticmethod
     def get_hadamard(matrix, round=False):
         """
         Выполняет преобразование Адамара.
         Возвращает матрицу размерностью 8 x 8
         """
-        assert matrix.shape == (8,8)
+        assert matrix.shape == (8, 8)
 
         h = hadamard(8) / 1
         if round:
-            return np.round(np.matmul(h, matrix, h) / 3)
+            return np.round(np.matmul(np.matmul(h, matrix), h) / 8)
 
-        return np.matmul(h, matrix, h) / 3
+        return np.matmul(np.matmul(h, matrix), h) / 8
 
     @staticmethod
     def get_avg(matrix, bit_num):
@@ -259,6 +258,7 @@ class Utilities:
             else:
                 return arr
 
+
 class Attack:
     def __init__(self, image):
         self.image = image
@@ -313,7 +313,7 @@ class Attack:
         """
         Фильтр увеличивает контраст соседних пикселей
         """
-        gaussian_blur = cv2.GaussianBlur(self.image_matrix, (7,7), sigmaX=2)
+        gaussian_blur = cv2.GaussianBlur(self.image_matrix, (7, 7), sigmaX=2)
         return cv2.addWeighted(self.image_matrix, 1.5, gaussian_blur, -0.5, 0)
 
     def histogram_equalization(self):
@@ -338,7 +338,7 @@ class Attack:
         :param n: Возможные параметры: 0.001, 0.005, 0.009
         """
         noise = np.random.normal(0, 25, (512, 512)).astype(np.uint8)
-        binary = np.random.choice([0, 1], size=(512, 512), p=[1-n, n])
+        binary = np.random.choice([0, 1], size=(512, 512), p=[1 - n, n])
 
         return np.array(self.image_matrix + np.multiply(noise, binary), dtype=np.uint8)
 
@@ -348,7 +348,7 @@ class Attack:
         :param n: Possible values: 0.01, 0.02, 0.03
         """
         # Pepper noise
-        binary = np.random.choice([0, 1], size=(512, 512), p=[1-n/2,n/2])
+        binary = np.random.choice([0, 1], size=(512, 512), p=[1 - n / 2, n / 2])
         image_matrix = np.array(self.image_matrix, copy=True)
 
         image_matrix = image_matrix - np.multiply(image_matrix, binary)
@@ -371,7 +371,7 @@ class Attack:
             displace = 0
         elif place == "bottom-right":
             displace = 256
-        noise = np.ones(shape=(512,512), dtype=int)
+        noise = np.ones(shape=(512, 512), dtype=int)
         for i in range(displace, displace + 256):
             for j in range(displace, displace + 256):
                 noise[i][j] = 0
