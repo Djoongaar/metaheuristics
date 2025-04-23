@@ -173,7 +173,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
         Firefly.__init__(self)
-        self.max_generations = 20
+        self.max_generations = 30
         self.genetic_evolution = []
         self.last_score = None
 
