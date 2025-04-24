@@ -24,7 +24,7 @@ class Base:
 class Firefly:
 
     def __init__(self):
-        self.alpha = 0.01
+        self.alpha = 0.05
         self.beta0 = 1.0
         self.gamma = 0.01
         self.theta = 0.97
@@ -42,8 +42,7 @@ class Firefly:
         return [
             {
                 'value': np.random.uniform(self.firefly_min, self.firefly_max),
-                'score': None,
-                'attract': self.beta0
+                'score': None
             } for _ in range(self.firefly_min, self.firefly_max)
         ]
 
@@ -82,12 +81,10 @@ class Firefly:
 
                 if watermark_j.score > watermark_i.score:
                     r = val_i - val_j
-                    attract = self.firefly_population[i]['attract']
-                    attract = attract * np.exp(-self.gamma * r ** 2)
+                    attract = self.beta0 * np.exp(-self.gamma * r ** 2)
 
                     val_j_new = val_j + attract * (val_i - val_j) + step
                     self.firefly_population[j]['value'] = val_j_new
-                    self.firefly_population[i]['attract'] = attract
 
                     # Если оценка улучшилась - обновляем self.best_firefly,
                     # а иначе увеличиваем счетчик self.firefly_stop_iterations
@@ -99,12 +96,10 @@ class Firefly:
 
                 elif watermark_j.score < watermark_i.score:
                     r = val_j - val_i
-                    attract = self.firefly_population[j]['attract']
-                    attract = attract * np.exp(-self.gamma * r ** 2)
+                    attract = self.beta0 * np.exp(-self.gamma * r ** 2)
 
                     val_i_new = val_i + attract * (val_j - val_i) + step
                     self.firefly_population[i]['value'] = val_i_new
-                    self.firefly_population[j]['attract'] = attract
 
                     # Если оценка улучшилась - обновляем self.best_firefly,
                     # а иначе увеличиваем счетчик self.firefly_stop_iterations
@@ -181,7 +176,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         results = []
         for num, candidate in enumerate(self.generation):
             if self.best_firefly is None:
-                self.best_firefly = {'value': (self.firefly_min + self.firefly_max) / 2, 'score': None, 'attract': 0}
+                self.best_firefly = {'value': (self.firefly_min + self.firefly_max) / 2, 'score': None}
             watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly['value'])
             watermark_data = {
                 'index': num,
