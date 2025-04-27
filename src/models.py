@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import bisect
+from csv import writer
 from PIL import Image
 from scipy.linalg import hadamard
 from src import Utilities, Attack
@@ -67,7 +68,7 @@ class Firefly:
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
 
-
+                # TODO: Вот тут распараллелить на 8 ядер
                 watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
                 watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
 
@@ -105,7 +106,9 @@ class Firefly:
 
                 # Сохраняю эволюцию светлячков для дальнейшей визуализации
                 with open('firefly.csv', 'a') as firefly_log:
-                    firefly_log.write(f"{self.firefly_current_iteration}, {self.firefly_population}")
+                    fields = [self.firefly_current_iteration, self.firefly_population]
+                    writer_object = writer(firefly_log)
+                    writer_object.writerow(fields)
 
         # Увеличиваем счетчик self.firefly_current_iteration
         self.firefly_current_iteration += 1
@@ -171,6 +174,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
     def evaluate(self):
         results = []
+
+        # TODO: Вот тут распараллелить на 8 ядер
         for num, candidate in enumerate(self.generation):
             if self.best_firefly_value is None:
                 self.best_firefly_value = (self.firefly_min + self.firefly_max) / 2
@@ -210,8 +215,11 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             results = self.evaluate()
 
             # Сохраняю эволюцию хромосом для дальнейшей визуализации
-            with open('genetic.csv', 'a') as firefly_log:
-                firefly_log.write(f"{epoch}, {results}")
+            with open('genetic.csv', 'a') as genetic_log:
+                fields = [epoch, results]
+                writer_object = writer(genetic_log)
+                writer_object.writerow(fields)
+
             self.crossing()
             self.fireflies()
 
