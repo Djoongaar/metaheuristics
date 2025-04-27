@@ -30,11 +30,11 @@ class Firefly:
         self.theta = 0.97
         self.firefly_min = 0
         self.firefly_max = 20
-        self.firefly_stop_iterations = 0
-        self.firefly_iteration_max = 3
+        self.firefly_current_iteration = 0
+        self.firefly_iteration_max = 10
         self.firefly_stop = False
-        self.best_firefly = None
         self.best_firefly_score = None
+        self.best_firefly_value = None
         self.firefly_elite_size = 3
         self.firefly_population = []
 
@@ -53,13 +53,13 @@ class Firefly:
         self.firefly_population = self.init_fireflies()
 
         # Если были предыдущие итерации, то добавляем в популяцию лучшее решение (элитные особи)
-        if self.best_firefly is not None:
+        if self.best_firefly_value is not None:
             for _ in range(self.firefly_elite_size):
                 self.firefly_population[random.randint(0, len(self.firefly_population) - 1)]['value'] = \
-                    self.best_firefly['value']
+                    self.best_firefly_value
 
-        # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_stop_iterations
-        if self.firefly_stop_iterations >= self.firefly_iteration_max:
+        # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_current_iteration
+        if self.firefly_current_iteration >= self.firefly_iteration_max:
             return
 
         for i in range(len(self.firefly_population)):
@@ -75,42 +75,40 @@ class Firefly:
                 self.firefly_population[j]['score'] = watermark_j.score
 
                 # Выполняем шаг полета светлячка
-
-
                 step = self.alpha * self.firefly_max
 
                 if watermark_j.score > watermark_i.score:
                     r = val_i - val_j
                     attract = self.beta0 * np.exp(-self.gamma * r ** 2)
 
-                    val_j_new = val_j + attract * (val_i - val_j) + step
+                    val_j_new = val_j + attract * r + step
                     self.firefly_population[j]['value'] = val_j_new
 
                     # Если оценка улучшилась - обновляем self.best_firefly,
-                    # а иначе увеличиваем счетчик self.firefly_stop_iterations
-                    if self.best_firefly['score'] is None or self.best_firefly['score'] > watermark_i.score:
-                        self.best_firefly = self.firefly_population[i]
-
-                        # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                        print('Firefly:', self.best_firefly)
+                    # а иначе увеличиваем счетчик self.firefly_current_iteration
+                    if self.best_firefly_score is None or self.best_firefly_score > watermark_i.score:
+                        self.best_firefly_score = watermark_i.score
+                        self.best_firefly_value = val_i
 
                 elif watermark_j.score < watermark_i.score:
                     r = val_j - val_i
                     attract = self.beta0 * np.exp(-self.gamma * r ** 2)
 
-                    val_i_new = val_i + attract * (val_j - val_i) + step
+                    val_i_new = val_i + attract * r + step
                     self.firefly_population[i]['value'] = val_i_new
 
                     # Если оценка улучшилась - обновляем self.best_firefly,
-                    # а иначе увеличиваем счетчик self.firefly_stop_iterations
-                    if self.best_firefly['score'] is None or self.best_firefly['score'] > watermark_j.score:
-                        self.best_firefly = self.firefly_population[j]
+                    # а иначе увеличиваем счетчик self.firefly_current_iteration
+                    if self.best_firefly_score is None or self.best_firefly_score > watermark_j.score:
+                        self.best_firefly_score = watermark_j.score
+                        self.best_firefly_value = val_j
 
-                        # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                        print('Firefly:', self.best_firefly)
+                # Сохраняю эволюцию светлячков для дальнейшей визуализации
+                with open('firefly.csv', 'a') as firefly_log:
+                    firefly_log.write(f"{self.firefly_current_iteration}, {self.firefly_population}")
 
-        # Увеличиваем счетчик self.firefly_stop_iterations
-        self.firefly_stop_iterations += 1
+        # Увеличиваем счетчик self.firefly_current_iteration
+        self.firefly_current_iteration += 1
 
 
 class Genetic:
@@ -169,15 +167,14 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         Genetic.__init__(self)
         Firefly.__init__(self)
         self.max_generations = 30
-        self.genetic_evolution = []
         self.last_score = None
 
     def evaluate(self):
         results = []
         for num, candidate in enumerate(self.generation):
-            if self.best_firefly is None:
-                self.best_firefly = {'value': (self.firefly_min + self.firefly_max) / 2, 'score': None}
-            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly['value'])
+            if self.best_firefly_value is None:
+                self.best_firefly_value = (self.firefly_min + self.firefly_max) / 2
+            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly_value)
             watermark_data = {
                 'index': num,
                 'score': watermark.score,
@@ -203,23 +200,18 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             if i:
                 self.best_candidate_indexes.append(self.all_candidates[num])
 
-        best_candidate = {
-            'score': round(self.best_candidate['score'], 4),
-            'ssim': round(self.best_candidate['ssim'], 4),
-            'psnr': round(self.best_candidate['psnr'], 2),
-            'nc': round(self.best_candidate['nc'], 4),
-            'th': round(self.best_firefly['value'], 2)
-        }
-        ### Printing intermediate results during iterations
-        self.genetic_evolution.append(best_candidate)
-        print('Genetic:', best_candidate)
-
+        ### Save best results after crossing
         self.last_score = results[:self.generation_size - self.elite_size]
 
+        return results
+
     def evolution(self):
-        for _ in range(self.max_generations):
-            # for _ in tqdm(range(self.max_generations)):
-            self.evaluate()
+        for epoch in tqdm(range(self.max_generations)):
+            results = self.evaluate()
+
+            # Сохраняю эволюцию хромосом для дальнейшей визуализации
+            with open('genetic.csv', 'a') as firefly_log:
+                firefly_log.write(f"{epoch}, {results}")
             self.crossing()
             self.fireflies()
 
