@@ -268,7 +268,6 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                 time.sleep(2)
             else:
                 break
-        print('Queue 1:', generation_evaluations.qsize())
         for p in processes:
             # TODO: Попроавить небрежное отношение к процессам.
             p.join(timeout=1)
@@ -281,13 +280,15 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         self.elite_candidates = results[:self.elite_size]
 
         # Переопределяем лучшего кандидата и записываем индексы блоков
-        self.best_candidate = self.elite_candidates[0]
-        print('Best score:', self.best_candidate['score'])
-        self.best_candidate_indexes = []
+        if self.best_candidate is None or self.elite_candidates[0]['score'] < self.best_candidate['score']:
+            self.best_candidate = self.elite_candidates[0]
 
-        for num, i in enumerate(self.best_candidate['value']):
-            if i:
-                self.best_candidate_indexes.append(self.all_candidates[num])
+            print('Best score:', self.best_candidate['score'])
+            self.best_candidate_indexes = []
+
+            for num, i in enumerate(self.best_candidate['value']):
+                if i:
+                    self.best_candidate_indexes.append(self.all_candidates[num])
 
         ### Save best results after crossing
         self.last_score = results[:self.generation_size - self.elite_size]
