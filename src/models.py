@@ -1,6 +1,7 @@
 import numpy as np
 import random
-import bisect
+import queue
+import time
 from csv import writer
 from PIL import Image
 from scipy.linalg import hadamard
@@ -10,7 +11,14 @@ from skimage.metrics import (
     structural_similarity as ssim,
     peak_signal_noise_ratio as psnr
 )
+from multiprocessing import (
+    Process,
+    Queue,
+    set_start_method
+)
 
+
+# set_start_method('spawn', force=True)
 
 class Base:
     def __init__(self, image_path: str, embedded_image_path: str):
@@ -44,10 +52,15 @@ class Firefly:
             {
                 'value': np.random.uniform(self.firefly_min, self.firefly_max),
                 'score': None
-            } for _ in range(self.firefly_min, self.firefly_max)
+            } for _ in range(self.firefly_min, self.firefly_max, 2)
         ]
 
+    @staticmethod
+    def step_parallel():
+        pass
+
     def fireflies(self):
+        number_of_processes = 10
         candidate = self.generation[self.best_candidate['index']]
 
         # Инициализация популяции светлячков
@@ -63,12 +76,28 @@ class Firefly:
         if self.firefly_current_iteration >= self.firefly_iteration_max:
             return
 
+        # fireflies_queue = Queue()
+        # new_fireflies_queue = Queue()
+        #
+        # for _ in range(number_of_processes):
+        #     p = Process(
+        #         target=Firefly.step_parallel,
+        #         args=(
+        #             fireflies_queue,
+        #             self.embedded_image_bin,
+        #             self.image_matrix,
+        #             new_fireflies_queue
+        #         )
+        #     )
+        #     processes.append(p)
+        #     p.start()
+
         for i in range(len(self.firefly_population)):
             for j in range(len(self.firefly_population)):
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
 
-                # TODO: Вот тут распараллелить на 8 ядер
+                # TODO: Вот тут распараллелить на 16 ядер
                 watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
                 watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
 
@@ -105,7 +134,7 @@ class Firefly:
                         self.best_firefly_value = val_j
 
                 # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                with open('firefly.csv', 'a') as firefly_log:
+                with open('firefly_m.csv', 'a') as firefly_log:
                     fields = [self.firefly_current_iteration, self.firefly_population]
                     writer_object = writer(firefly_log)
                     writer_object.writerow(fields)
@@ -172,33 +201,88 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         self.max_generations = 30
         self.last_score = None
 
+    @staticmethod
+    def evaluate_parallel(
+            generation_queue,
+            generation_queue_nums,
+            generation_bin,
+            embedded_image_bin,
+            image_matrix,
+            best_firefly_value,
+            generation_evaluations):
+
+        if best_firefly_value is None:
+            best_firefly_value = 10
+
+        while True:
+            try:
+                chromosome = generation_queue.get_nowait()
+                num = generation_queue_nums.get_nowait()
+
+                watermark = Watermark(chromosome, embedded_image_bin, image_matrix, best_firefly_value)
+                result = {
+                    'index': num,
+                    'score': watermark.score,
+                    'ssim': watermark.ssim,
+                    'psnr': watermark.psnr,
+                    'value': generation_bin[num],
+                    'nc': watermark.avg_nc
+                }
+
+            except queue.Empty:
+                return True
+            else:
+                generation_evaluations.put(result)
+
+
     def evaluate(self):
+        number_of_processes = 16
+
+        generation_queue = Queue()
+        generation_queue_nums = Queue()
+        generation_evaluations = Queue()
+        processes = []
+
+        for num, data in enumerate(self.generation):
+            generation_queue_nums.put(num)
+            generation_queue.put(data)
+
+        for _ in range(number_of_processes):
+            p = Process(
+                target=HybridMetaheuristic.evaluate_parallel,
+                args=(
+                    generation_queue,
+                    generation_queue_nums,
+                    self.generation_bin,
+                    self.embedded_image_bin,
+                    self.image_matrix,
+                    self.best_firefly_value,
+                    generation_evaluations
+                )
+            )
+            processes.append(p)
+            p.start()
+
+        while True:
+            if generation_evaluations.qsize() != 100:
+                time.sleep(2)
+            else:
+                break
+        print('Queue 1:', generation_evaluations.qsize())
+        for p in processes:
+            # TODO: Попроавить небрежное отношение к процессам.
+            p.join(timeout=1)
+
         results = []
-
-        # TODO: Вот тут распараллелить на 8 ядер
-        for num, candidate in enumerate(self.generation):
-            if self.best_firefly_value is None:
-                self.best_firefly_value = (self.firefly_min + self.firefly_max) / 2
-            watermark = Watermark(candidate, self.embedded_image_bin, self.image_matrix, self.best_firefly_value)
-            watermark_data = {
-                'index': num,
-                'score': watermark.score,
-                'ssim': watermark.ssim,
-                'psnr': watermark.psnr,
-                'value': self.generation_bin[num],
-                'nc': watermark.avg_nc
-            }
-            results.append(watermark_data)
-
-            if (len(self.elite_candidates) < self.elite_size or
-                    self.elite_candidates[-1]['score'] > watermark_data['score']):
-                bisect.insort(self.elite_candidates, watermark_data, key=lambda x: x['score'])
-
-        self.elite_candidates = self.elite_candidates[:self.elite_size]
+        while generation_evaluations.qsize() != 0:
+            result = generation_evaluations.get()
+            results.append(result)
         results = sorted(results, key=lambda x: x['score'])
+        self.elite_candidates = results[:self.elite_size]
 
         # Переопределяем лучшего кандидата и записываем индексы блоков
         self.best_candidate = self.elite_candidates[0]
+        print('Best score:', self.best_candidate['score'])
         self.best_candidate_indexes = []
 
         for num, i in enumerate(self.best_candidate['value']):
@@ -207,7 +291,6 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
         ### Save best results after crossing
         self.last_score = results[:self.generation_size - self.elite_size]
-
         return results
 
     def evolution(self):
@@ -215,13 +298,13 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             results = self.evaluate()
 
             # Сохраняю эволюцию хромосом для дальнейшей визуализации
-            with open('genetic.csv', 'a') as genetic_log:
+            with open('genetic_m.csv', 'a') as genetic_log:
                 fields = [epoch, results]
                 writer_object = writer(genetic_log)
                 writer_object.writerow(fields)
 
             self.crossing()
-            self.fireflies()
+            # self.fireflies()
 
 
 class Watermark:
