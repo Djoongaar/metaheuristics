@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import bisect
 import queue
 import time
 from csv import writer
@@ -13,12 +14,9 @@ from skimage.metrics import (
 )
 from multiprocessing import (
     Process,
-    Queue,
-    set_start_method
+    Queue
 )
 
-
-# set_start_method('spawn', force=True)
 
 class Base:
     def __init__(self, image_path: str, embedded_image_path: str):
@@ -76,28 +74,11 @@ class Firefly:
         if self.firefly_current_iteration >= self.firefly_iteration_max:
             return
 
-        # fireflies_queue = Queue()
-        # new_fireflies_queue = Queue()
-        #
-        # for _ in range(number_of_processes):
-        #     p = Process(
-        #         target=Firefly.step_parallel,
-        #         args=(
-        #             fireflies_queue,
-        #             self.embedded_image_bin,
-        #             self.image_matrix,
-        #             new_fireflies_queue
-        #         )
-        #     )
-        #     processes.append(p)
-        #     p.start()
-
         for i in range(len(self.firefly_population)):
             for j in range(len(self.firefly_population)):
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
 
-                # TODO: Вот тут распараллелить на 16 ядер
                 watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
                 watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
 
@@ -269,7 +250,6 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             else:
                 break
         for p in processes:
-            # TODO: Попроавить небрежное отношение к процессам.
             p.join(timeout=1)
 
         results = []
@@ -277,7 +257,17 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             result = generation_evaluations.get()
             results.append(result)
         results = sorted(results, key=lambda x: x['score'])
-        self.elite_candidates = results[:self.elite_size]
+
+        if len(self.elite_candidates) == 0:
+            self.elite_candidates = results[:self.elite_size]
+        else:
+            # Если в новом поколении есть хромосомы превосходящие какую-то из элитных
+            # то надо вытеснить элитную хромосому и вставить новую
+            for i in results[:self.elite_size]:
+                if self.elite_candidates[-1]['score'] > i['score']:
+                    bisect.insort(self.elite_candidates, i, key=lambda x: x['score'])
+            # а затем обрезать массив по заданной длине
+            self.elite_candidates = self.elite_candidates[:self.elite_size]
 
         # Переопределяем лучшего кандидата и записываем индексы блоков
         if self.best_candidate is None or self.elite_candidates[0]['score'] < self.best_candidate['score']:
@@ -305,7 +295,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                 writer_object.writerow(fields)
 
             self.crossing()
-            # self.fireflies()
+            self.fireflies()
 
 
 class Watermark:
