@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import random
 import bisect
@@ -26,7 +27,15 @@ class Base:
         self.embedded_image = Utilities.get_image(embedded_image_path)
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
+        self.logfile_suffix = self.get_log_file_suffix(image_path, embedded_image_path)
+        self.genetic_log_file_path = os.path.join('log', f'{self.logfile_suffix}_genetic.csv')
+        self.firefly_log_file_path = os.path.join('log', f'{self.logfile_suffix}_firefly.csv')
 
+    @staticmethod
+    def get_log_file_suffix(image_path, embedded_image_path):
+        image_path = image_path.split('.')[0].split('/')[1]
+        embedded_image_path = embedded_image_path.split('.')[0].split('/')[1]
+        return f'{image_path}_{embedded_image_path}'
 
 class Firefly:
 
@@ -44,6 +53,7 @@ class Firefly:
         self.best_firefly_value = None
         self.firefly_elite_size = 3
         self.firefly_population = []
+        self.firefly_population_size = 10
 
     def init_fireflies(self):
         return [
@@ -54,8 +64,21 @@ class Firefly:
         ]
 
     @staticmethod
-    def step_parallel():
-        pass
+    def evaluate_parallel(
+            candidate,
+            firefly_population_queue,
+            embedded_image_bin,
+            image_matrix,
+            firefly_evaluations_queue
+    ):
+        while True:
+            try:
+                firefly_candidate = firefly_population_queue.get_nowait()
+                watermark = Watermark(candidate, embedded_image_bin, image_matrix, firefly_candidate['value'])
+            except queue.Empty:
+                return True
+            else:
+                firefly_evaluations_queue.put(watermark.score)
 
     def fireflies(self):
         number_of_processes = 10
@@ -65,9 +88,9 @@ class Firefly:
         self.firefly_population = self.init_fireflies()
 
         # Если были предыдущие итерации, то добавляем в популяцию лучшее решение (элитные особи)
-        if self.best_firefly_value is not None:
+        if self.best_firefly_value:
             for _ in range(self.firefly_elite_size):
-                self.firefly_population[random.randint(0, len(self.firefly_population) - 1)]['value'] = \
+                self.firefly_population[random.randint(0, self.firefly_population_size - 1)]['value'] = \
                     self.best_firefly_value
 
         # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_current_iteration
@@ -75,47 +98,64 @@ class Firefly:
             return
 
         for i in range(len(self.firefly_population)):
-            for j in range(len(self.firefly_population)):
+            firefly_population_queue = Queue()
+            firefly_evaluations_queue = Queue()
+            processes = []
+
+            for firefly in self.firefly_population:
+                firefly_population_queue.put(firefly)
+
+            for _ in range(number_of_processes):
+                p = Process(
+                    target=Firefly.evaluate_parallel,
+                    args=(
+                        candidate,
+                        firefly_population_queue,
+                        self.embedded_image_bin,
+                        self.image_matrix,
+                        firefly_evaluations_queue
+                    )
+                )
+                processes.append(p)
+                p.start()
+
+            # Ждем пока все процессы завершат работу (наполнял очередь данными)
+            while True:
+                if firefly_evaluations_queue.qsize() != self.firefly_population_size:
+                    time.sleep(2)
+                else:
+                    break
+
+            # Завершаем все процессы
+            for p in processes:
+                p.join(timeout=1)
+
+            # Перезаписываем данные 'score' в массиве self.firefly_population
+            for num in range(self.firefly_population_size):
+                self.firefly_population[num]['score'] = firefly_evaluations_queue.get()
+
+            for j in range(self.firefly_population_size):
                 val_i = self.firefly_population[i]['value']
                 val_j = self.firefly_population[j]['value']
-
-                watermark_i = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_i)
-                watermark_j = Watermark(candidate, self.embedded_image_bin, self.image_matrix, val_j)
-
-                self.firefly_population[i]['score'] = watermark_i.score
-                self.firefly_population[j]['score'] = watermark_j.score
+                score_i = self.firefly_population[i]['score']
+                score_j = self.firefly_population[j]['score']
 
                 # Выполняем шаг полета светлячка
                 step = self.alpha * self.firefly_max
 
-                if watermark_j.score > watermark_i.score:
+                if score_i < score_j:
                     r = val_i - val_j
                     attract = self.beta0 * np.exp(-self.gamma * r ** 2)
-
                     val_j_new = val_j + attract * r + step
                     self.firefly_population[j]['value'] = val_j_new
 
-                    # Если оценка улучшилась - обновляем self.best_firefly,
-                    # а иначе увеличиваем счетчик self.firefly_current_iteration
-                    if self.best_firefly_score is None or self.best_firefly_score > watermark_i.score:
-                        self.best_firefly_score = watermark_i.score
+                    # Если оценка улучшилась - обновляем self.best_firefly
+                    if self.best_firefly_score is None or self.best_firefly_score > score_i:
+                        self.best_firefly_score = score_i
                         self.best_firefly_value = val_i
 
-                elif watermark_j.score < watermark_i.score:
-                    r = val_j - val_i
-                    attract = self.beta0 * np.exp(-self.gamma * r ** 2)
-
-                    val_i_new = val_i + attract * r + step
-                    self.firefly_population[i]['value'] = val_i_new
-
-                    # Если оценка улучшилась - обновляем self.best_firefly,
-                    # а иначе увеличиваем счетчик self.firefly_current_iteration
-                    if self.best_firefly_score is None or self.best_firefly_score > watermark_j.score:
-                        self.best_firefly_score = watermark_j.score
-                        self.best_firefly_value = val_j
-
                 # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                with open('firefly_m.csv', 'a') as firefly_log:
+                with open(self.firefly_log_file_path, 'a') as firefly_log:
                     fields = [self.firefly_current_iteration, self.firefly_population]
                     writer_object = writer(firefly_log)
                     writer_object.writerow(fields)
@@ -179,7 +219,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
         Firefly.__init__(self)
-        self.max_generations = 30
+        self.max_generations = 100
         self.last_score = None
 
     @staticmethod
@@ -289,7 +329,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             results = self.evaluate()
 
             # Сохраняю эволюцию хромосом для дальнейшей визуализации
-            with open('genetic_m.csv', 'a') as genetic_log:
+            with open(self.genetic_log_file_path, 'a') as genetic_log:
                 fields = [epoch, results]
                 writer_object = writer(genetic_log)
                 writer_object.writerow(fields)
