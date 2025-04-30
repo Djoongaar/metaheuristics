@@ -45,7 +45,7 @@ class Firefly:
         self.gamma = 0.01
         self.theta = 0.97
         self.firefly_min = 0
-        self.firefly_max = 20
+        self.firefly_max = 30
         self.firefly_current_iteration = 0
         self.firefly_iteration_max = 10
         self.firefly_stop = False
@@ -53,7 +53,7 @@ class Firefly:
         self.best_firefly_value = None
         self.firefly_elite_size = 3
         self.firefly_population = []
-        self.firefly_population_size = 10
+        self.firefly_population_size = 15
 
     def init_fireflies(self):
         return [
