@@ -1,8 +1,12 @@
-import numpy as np
-import random
-import cv2
 import io
+import re
+import cv2
+import json
+import random
+import numpy as np
+import pandas as pd
 from PIL import Image
+import plotly.graph_objects as go
 from scipy.linalg import hadamard
 from scipy.ndimage import rotate
 from skimage.metrics import (
@@ -257,6 +261,49 @@ class Utilities:
                 arr[ind] = 1
             else:
                 return arr
+
+    @staticmethod
+    def get_data(file_path, name="value", size=10):
+        """ Функция возвращает датасет готовый к визуализации """
+
+        def preprocess_data(x, ind=0):
+            x = x.replace("'", '"')
+            x = x.replace("None", "null")
+            x = re.sub(r"array\(\[[ 0-9,.]*\]\)", "null", x)
+            return json.loads(f'{x}')[ind][name]
+
+        dataframe = pd.read_csv(file_path, names=("epoch", "data"))
+
+        for i in range(size):
+            dataframe[i] = dataframe["data"].map(lambda x: preprocess_data(x, ind=i))
+
+        dataframe = dataframe.drop(columns=["data"])
+
+        return dataframe
+
+    @staticmethod
+    def draw_values(data, figure, size=10):
+        """
+        Отрисовывает полет светлячка, а вернее его
+        значения с течением шагов алгоритма и итераций
+        """
+        for i in range(size):
+            figure.add_trace(go.Scatter(x=data.index, y=data[i],
+                                        mode='lines+markers',
+                                        name=i))
+        return figure
+
+    @staticmethod
+    def draw_score(data, figure):
+        """
+        Отрисовывает изменение показателей качества
+        светлячков с течением шагов алгоритма и итераций
+        """
+        for i in range(10):
+            figure.add_trace(go.Scatter(x=data.index, y=data[i],
+                                        mode='lines',
+                                        name=i))
+        return figure
 
 
 class Attack:

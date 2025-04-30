@@ -28,14 +28,14 @@ class Base:
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
         self.logfile_suffix = self.get_log_file_suffix(image_path, embedded_image_path)
-        self.genetic_log_file_path = os.path.join('log', f'{self.logfile_suffix}_genetic.csv')
-        self.firefly_log_file_path = os.path.join('log', f'{self.logfile_suffix}_firefly.csv')
+        self.genetic_log_file_path = os.path.join("log", f"{self.logfile_suffix}_genetic.csv")
+        self.firefly_log_file_path = os.path.join("log", f"{self.logfile_suffix}_firefly.csv")
 
     @staticmethod
     def get_log_file_suffix(image_path, embedded_image_path):
-        image_path = image_path.split('.')[0].split('/')[1]
-        embedded_image_path = embedded_image_path.split('.')[0].split('/')[1]
-        return f'{image_path}_{embedded_image_path}'
+        image_path = image_path.split(".")[0].split("/")[1]
+        embedded_image_path = embedded_image_path.split(".")[0].split("/")[1]
+        return f"{image_path}_{embedded_image_path}"
 
 class Firefly:
 
@@ -45,7 +45,7 @@ class Firefly:
         self.gamma = 0.01
         self.theta = 0.97
         self.firefly_min = 0
-        self.firefly_max = 20
+        self.firefly_max = 30
         self.firefly_current_iteration = 0
         self.firefly_iteration_max = 10
         self.firefly_stop = False
@@ -53,13 +53,13 @@ class Firefly:
         self.best_firefly_value = None
         self.firefly_elite_size = 3
         self.firefly_population = []
-        self.firefly_population_size = 10
+        self.firefly_population_size = 15
 
     def init_fireflies(self):
         return [
             {
-                'value': np.random.uniform(self.firefly_min, self.firefly_max),
-                'score': None
+                "value": np.random.uniform(self.firefly_min, self.firefly_max),
+                "score": None
             } for _ in range(self.firefly_min, self.firefly_max, 2)
         ]
 
@@ -74,7 +74,7 @@ class Firefly:
         while True:
             try:
                 firefly_candidate = firefly_population_queue.get_nowait()
-                watermark = Watermark(candidate, embedded_image_bin, image_matrix, firefly_candidate['value'])
+                watermark = Watermark(candidate, embedded_image_bin, image_matrix, firefly_candidate["value"])
             except queue.Empty:
                 return True
             else:
@@ -82,7 +82,7 @@ class Firefly:
 
     def fireflies(self):
         number_of_processes = 10
-        candidate = self.generation[self.best_candidate['index']]
+        candidate = self.generation[self.best_candidate["index"]]
 
         # Инициализация популяции светлячков
         self.firefly_population = self.init_fireflies()
@@ -90,7 +90,7 @@ class Firefly:
         # Если были предыдущие итерации, то добавляем в популяцию лучшее решение (элитные особи)
         if self.best_firefly_value:
             for _ in range(self.firefly_elite_size):
-                self.firefly_population[random.randint(0, self.firefly_population_size - 1)]['value'] = \
+                self.firefly_population[random.randint(0, self.firefly_population_size - 1)]["value"] = \
                     self.best_firefly_value
 
         # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_current_iteration
@@ -130,15 +130,15 @@ class Firefly:
             for p in processes:
                 p.join(timeout=1)
 
-            # Перезаписываем данные 'score' в массиве self.firefly_population
+            # Перезаписываем данные "score" в массиве self.firefly_population
             for num in range(self.firefly_population_size):
-                self.firefly_population[num]['score'] = firefly_evaluations_queue.get()
+                self.firefly_population[num]["score"] = firefly_evaluations_queue.get()
 
             for j in range(self.firefly_population_size):
-                val_i = self.firefly_population[i]['value']
-                val_j = self.firefly_population[j]['value']
-                score_i = self.firefly_population[i]['score']
-                score_j = self.firefly_population[j]['score']
+                val_i = self.firefly_population[i]["value"]
+                val_j = self.firefly_population[j]["value"]
+                score_i = self.firefly_population[i]["score"]
+                score_j = self.firefly_population[j]["score"]
 
                 # Выполняем шаг полета светлячка
                 step = self.alpha * self.firefly_max
@@ -147,7 +147,7 @@ class Firefly:
                     r = val_i - val_j
                     attract = self.beta0 * np.exp(-self.gamma * r ** 2)
                     val_j_new = val_j + attract * r + step
-                    self.firefly_population[j]['value'] = val_j_new
+                    self.firefly_population[j]["value"] = val_j_new
 
                     # Если оценка улучшилась - обновляем self.best_firefly
                     if self.best_firefly_score is None or self.best_firefly_score > score_i:
@@ -155,7 +155,7 @@ class Firefly:
                         self.best_firefly_value = val_i
 
                 # Сохраняю эволюцию светлячков для дальнейшей визуализации
-                with open(self.firefly_log_file_path, 'a') as firefly_log:
+                with open(self.firefly_log_file_path, "a") as firefly_log:
                     fields = [self.firefly_current_iteration, self.firefly_population]
                     writer_object = writer(firefly_log)
                     writer_object.writerow(fields)
@@ -192,8 +192,8 @@ class Genetic:
 
     def crossing(self):
         new_generation = []
-        new_generation.extend([i['value'] for i in self.last_score])
-        new_generation.extend([i['value'] for i in self.elite_candidates])
+        new_generation.extend([i["value"] for i in self.last_score])
+        new_generation.extend([i["value"] for i in self.elite_candidates])
         new_generation = random.sample(new_generation, len(new_generation))
         self.generation_bin = []
         for i in range(0, len(new_generation), 2):
@@ -242,12 +242,12 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
                 watermark = Watermark(chromosome, embedded_image_bin, image_matrix, best_firefly_value)
                 result = {
-                    'index': num,
-                    'score': watermark.score,
-                    'ssim': watermark.ssim,
-                    'psnr': watermark.psnr,
-                    'value': generation_bin[num],
-                    'nc': watermark.avg_nc
+                    "index": num,
+                    "score": watermark.score,
+                    "ssim": watermark.ssim,
+                    "psnr": watermark.psnr,
+                    "value": generation_bin[num],
+                    "nc": watermark.avg_nc
                 }
 
             except queue.Empty:
@@ -296,7 +296,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         while generation_evaluations.qsize() != 0:
             result = generation_evaluations.get()
             results.append(result)
-        results = sorted(results, key=lambda x: x['score'])
+        results = sorted(results, key=lambda x: x["score"])
 
         if len(self.elite_candidates) == 0:
             self.elite_candidates = results[:self.elite_size]
@@ -304,19 +304,19 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             # Если в новом поколении есть хромосомы превосходящие какую-то из элитных
             # то надо вытеснить элитную хромосому и вставить новую
             for i in results[:self.elite_size]:
-                if self.elite_candidates[-1]['score'] > i['score']:
-                    bisect.insort(self.elite_candidates, i, key=lambda x: x['score'])
+                if self.elite_candidates[-1]["score"] > i["score"]:
+                    bisect.insort(self.elite_candidates, i, key=lambda x: x["score"])
             # а затем обрезать массив по заданной длине
             self.elite_candidates = self.elite_candidates[:self.elite_size]
 
         # Переопределяем лучшего кандидата и записываем индексы блоков
-        if self.best_candidate is None or self.elite_candidates[0]['score'] < self.best_candidate['score']:
+        if self.best_candidate is None or self.elite_candidates[0]["score"] < self.best_candidate["score"]:
             self.best_candidate = self.elite_candidates[0]
 
-            print('Best score:', self.best_candidate['score'])
+            print("Best score:", self.best_candidate["score"])
             self.best_candidate_indexes = []
 
-            for num, i in enumerate(self.best_candidate['value']):
+            for num, i in enumerate(self.best_candidate["value"]):
                 if i:
                     self.best_candidate_indexes.append(self.all_candidates[num])
 
@@ -329,7 +329,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             results = self.evaluate()
 
             # Сохраняю эволюцию хромосом для дальнейшей визуализации
-            with open(self.genetic_log_file_path, 'a') as genetic_log:
+            with open(self.genetic_log_file_path, "a") as genetic_log:
                 fields = [epoch, results]
                 writer_object = writer(genetic_log)
                 writer_object.writerow(fields)
@@ -360,12 +360,12 @@ class Watermark:
         matrix = np.array(self.image_matrix, copy=True)
 
         for block in self.candidate_blocks:
-            if 'block_embedded' in block:
+            if "block_embedded" in block:
                 for i in range(8):
                     for j in range(8):
-                        i_offset = block['index'] // 64
-                        j_offset = block['index'] % 64
-                        matrix[8 * i_offset + i][8 * j_offset + j] = block['block_embedded'][i][j]
+                        i_offset = block["index"] // 64
+                        j_offset = block["index"] % 64
+                        matrix[8 * i_offset + i][8 * j_offset + j] = block["block_embedded"][i][j]
 
         return matrix
 
@@ -380,7 +380,7 @@ class Watermark:
                 block_count = bit_count // 4
                 bit_num = bit_count % 4
                 block = self.candidate_blocks[block_count]
-                new_pix = Utilities.get_avg(block['hadamard'], bit_num)
+                new_pix = Utilities.get_avg(block["hadamard"], bit_num)
 
                 if self.embedded_image_bin[i][j]:
                     new_pix += self.embedding_threshold
@@ -388,7 +388,7 @@ class Watermark:
                     new_pix -= self.embedding_threshold
 
                 Utilities.insert_new_pixel(block, new_pix, bit_num)
-                self.save_secret_key(block['index'], i, j)
+                self.save_secret_key(block["index"], i, j)
 
     def embedding(self, candidate_blocks):
         """
@@ -398,10 +398,10 @@ class Watermark:
 
         # Шаг 1. Сначала для всех блоков-кандидатов считаем функцию Адамара
         for candidate_block in candidate_blocks:
-            hadamard_matrix = Utilities.get_hadamard(candidate_block['origin'])
+            hadamard_matrix = Utilities.get_hadamard(candidate_block["origin"])
 
-            candidate_block['hadamard'] = hadamard_matrix
-            candidate_block['hadamard_embedded'] = np.array(hadamard_matrix, copy=True)
+            candidate_block["hadamard"] = hadamard_matrix
+            candidate_block["hadamard_embedded"] = np.array(hadamard_matrix, copy=True)
 
         # Шаг 2. Затем для каждого бита встраиваемого изображения:
         # считаем новое значение коэффициента и встраиваем его в матрицу Адамара
@@ -409,7 +409,7 @@ class Watermark:
 
         # Шаг 3. Выполняем обратное преобразование Адамара
         for candidate in candidate_blocks:
-            candidate['block_embedded'] = Utilities.get_hadamard(candidate['hadamard_embedded'], round=True)
+            candidate["block_embedded"] = Utilities.get_hadamard(candidate["hadamard_embedded"], round=True)
 
         # Шаг 4. По массиву размерностью (4096, 8, 8) восстанавливаем матрицу размерностью 512 х 512
         self.embedded_matrix = self.build_matrix()
