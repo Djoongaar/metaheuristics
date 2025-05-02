@@ -81,7 +81,7 @@ class Firefly:
                 firefly_evaluations_queue.put(watermark.score)
 
     def fireflies(self):
-        number_of_processes = 10
+        number_of_processes = os.cpu_count()
         candidate = self.generation[self.best_candidate["index"]]
 
         # Инициализация популяции светлячков
@@ -257,7 +257,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
 
     def evaluate(self):
-        number_of_processes = 16
+        number_of_processes = os.cpu_count()
 
         generation_queue = Queue()
         generation_queue_nums = Queue()
