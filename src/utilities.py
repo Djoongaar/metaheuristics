@@ -278,11 +278,12 @@ class Utilities:
             dataframe[i] = dataframe["data"].map(lambda x: preprocess_data(x, ind=i))
 
         dataframe = dataframe.drop(columns=["data"])
+        dataframe = dataframe.drop(columns=["epoch"])
 
         return dataframe
 
     @staticmethod
-    def draw_values(data, figure, size=10):
+    def draw_scatter(data, figure, size=10):
         """
         Отрисовывает полет светлячка, а вернее его
         значения с течением шагов алгоритма и итераций
@@ -294,15 +295,28 @@ class Utilities:
         return figure
 
     @staticmethod
-    def draw_score(data, figure):
+    def draw_lines(data, figure, size=10):
         """
-        Отрисовывает изменение показателей качества
-        светлячков с течением шагов алгоритма и итераций
+        Отрисовывает полет светлячка, а вернее его
+        значения с течением шагов алгоритма и итераций
         """
-        for i in range(10):
+        for i in range(size):
             figure.add_trace(go.Scatter(x=data.index, y=data[i],
                                         mode='lines',
                                         name=i))
+        return figure
+
+    @staticmethod
+    def draw_candles(data, figure, size=10):
+        """
+        Отрисовывает полет светлячка, а вернее его
+        значения с течением шагов алгоритма и итераций
+        """
+        data = data.T
+        for i in range(size):
+            figure.add_trace(go.Box(y=data[i],
+                                    quartilemethod="linear",
+                                    name=i))
         return figure
 
 
