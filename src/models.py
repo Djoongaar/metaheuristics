@@ -171,7 +171,8 @@ class Genetic:
         self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
-        self.elite_size = 20
+        self.elite_size = 5
+        self.elite_mult_coef = 6
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
         self.generation = self.bin_to_index()
@@ -193,7 +194,7 @@ class Genetic:
     def crossing(self):
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
-        new_generation.extend([i["value"] for i in self.elite_candidates])
+        new_generation.extend([i["value"] for i in self.elite_candidates * self.elite_mult_coef])
         new_generation = random.sample(new_generation, len(new_generation))
         self.generation_bin = []
         for i in range(0, len(new_generation), 2):
@@ -321,8 +322,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                     self.best_candidate_indexes.append(self.all_candidates[num])
 
         ### Save best results after crossing
-        self.last_score = results[:self.generation_size - self.elite_size]
-        return results
+        self.last_score = results[:self.generation_size - self.elite_size * self.elite_mult_coef]
+        return self.elite_candidates + results
 
     def evolution(self):
         for epoch in tqdm(range(self.max_generations)):
