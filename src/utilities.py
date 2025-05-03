@@ -283,37 +283,37 @@ class Utilities:
         return dataframe
 
     @staticmethod
-    def draw_scatter(data, figure, size=10):
+    def draw_scatter(data, figure):
         """
         Отрисовывает полет светлячка, а вернее его
         значения с течением шагов алгоритма и итераций
         """
-        for i in range(size):
+        for i in range(data.shape[1]):
             figure.add_trace(go.Scatter(x=data.index, y=data[i],
                                         mode='lines+markers',
                                         name=i))
         return figure
 
     @staticmethod
-    def draw_lines(data, figure, size=10):
+    def draw_lines(data, figure):
         """
         Отрисовывает полет светлячка, а вернее его
         значения с течением шагов алгоритма и итераций
         """
-        for i in range(size):
+        for i in range(data.shape[1]):
             figure.add_trace(go.Scatter(x=data.index, y=data[i],
                                         mode='lines',
                                         name=i))
         return figure
 
     @staticmethod
-    def draw_candles(data, figure, size=10):
+    def draw_candles(data, figure):
         """
         Отрисовывает полет светлячка, а вернее его
         значения с течением шагов алгоритма и итераций
         """
         data = data.T
-        for i in range(size):
+        for i in range(data.shape[1]):
             figure.add_trace(go.Box(y=data[i],
                                     quartilemethod="linear",
                                     name=i))
