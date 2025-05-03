@@ -171,8 +171,8 @@ class Genetic:
         self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
-        self.elite_size = 5
-        self.elite_mult_coef = 6
+        self.elite_size = 15
+        self.elite_mult_coef = 2
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
         self.generation = self.bin_to_index()
