@@ -73,6 +73,7 @@ class Firefly:
             firefly_evaluations_queue
     ):
         """ Метод оценивает приспособленность светлячка """
+        assert len(candidate) == 1024
         while True:
             try:
                 firefly_candidate = firefly_population_queue.get_nowait()
@@ -112,6 +113,9 @@ class Firefly:
             # Наиболее ресурсоемкий процесс оценки каждой особи в популяции распарралелен на все ядра
             # Мультипроцессорность протестирована на 16 ядерном intel x86-64
             for _ in range(number_of_processes):
+
+                assert len(candidate) == 1024
+
                 p = Process(
                     target=Firefly.evaluate_parallel,
                     args=(
@@ -179,21 +183,29 @@ class Genetic:
         self.generation_size = 100
         self.elite_size = 30
         self.elite_mult_coef = 1
-        self.chromosome_length = 2048
+        self.chromosome_length = 4096  # 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
         self.generation = self.bin_to_index()
 
     def random_candidates(self):
-        candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[1 / 2, 1 / 2])
+        candidate = np.random.choice([0, 1], size=(self.chromosome_length,), p=[3 / 4, 1 / 4])
         return Utilities.mutate(candidate)
 
     def bin_to_index(self):
         result = []
         for chromosome_bin in self.generation_bin:
+
+            assert np.sum(chromosome_bin) == 1024
+            assert len(chromosome_bin) == 4096
+
             chromosome = []
             for i in range(self.chromosome_length):
                 if chromosome_bin[i] == 1:
                     chromosome.append(self.all_candidates[i])
+
+            assert len(self.all_candidates) == 4096
+            assert len(chromosome) == 1024
+
             result.append(chromosome)
         return result
 
@@ -213,7 +225,15 @@ class Genetic:
                 new_generation[i][1024:1280],
                 new_generation[i+1][1280:1536],
                 new_generation[i][1536:1792],
-                new_generation[i+1][1792:2048]
+                new_generation[i+1][1792:2048],
+                new_generation[i][2048:2304],
+                new_generation[i+1][2304:2560],
+                new_generation[i][2560:2816],
+                new_generation[i+1][2816:3072],
+                new_generation[i][3072:3328],
+                new_generation[i+1][3328:3584],
+                new_generation[i][3584:3840],
+                new_generation[i+1][3840:4096]
             ))
             child_2 = np.concatenate((
                 new_generation[i+1][:256],
@@ -223,10 +243,24 @@ class Genetic:
                 new_generation[i+1][1024:1280],
                 new_generation[i][1280:1536],
                 new_generation[i+1][1536:1792],
-                new_generation[i][1792:2048]
+                new_generation[i][1792:2048],
+                new_generation[i+1][2048:2304],
+                new_generation[i][2304:2560],
+                new_generation[i+1][2560:2816],
+                new_generation[i][2816:3072],
+                new_generation[i+1][3072:3328],
+                new_generation[i][3328:3584],
+                new_generation[i+1][3584:3840],
+                new_generation[i][3840:4096]
             ))
-            self.generation_bin.append(Utilities.mutate(child_1))
-            self.generation_bin.append(Utilities.mutate(child_2))
+            child_1_mutated = Utilities.mutate(child_1)
+            child_2_mutated = Utilities.mutate(child_2)
+
+            assert np.sum(child_1_mutated) == 1024
+            assert np.sum(child_2_mutated) == 1024
+
+            self.generation_bin.append(child_1_mutated)
+            self.generation_bin.append(child_2_mutated)
 
         self.generation = self.bin_to_index()
 
@@ -399,6 +433,8 @@ class Watermark:
         self.secret_key[i][j] = block_index
 
     def encoding(self):
+
+        assert len(self.candidate_blocks) == 1024
 
         for i in range(64):
             for j in range(64):

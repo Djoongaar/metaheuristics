@@ -215,12 +215,14 @@ class Utilities:
         for num, i in enumerate(sorted_entropies):
             i['sorted_i'] = num
 
+        assert len(sorted_entropies) == 4096
+
         return sorted_entropies
 
     @staticmethod
     def get_all_candidates(block_array):
         entropies = Utilities.get_entropies(block_array)
-        return entropies[:2048]
+        return entropies  # entropies[:2048]
 
     @staticmethod
     def extracting(watermark, secret_key):
@@ -253,13 +255,16 @@ class Utilities:
 
     @staticmethod
     def mutate(arr):
+        assert len(arr) == 4096
         while True:
-            ind = random.randrange(0, 2048)
-            if sum(arr) > 1024:
+            ind = random.randrange(0, 4096)
+            if np.sum(arr) > 1024:
                 arr[ind] = 0
-            elif sum(arr) < 1024:
+            elif np.sum(arr) < 1024:
                 arr[ind] = 1
             else:
+                assert len(arr) == 4096
+                assert np.sum(arr) == 1024
                 return arr
 
     @staticmethod
