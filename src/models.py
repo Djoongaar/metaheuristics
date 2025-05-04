@@ -56,6 +56,7 @@ class Firefly:
         self.firefly_population_size = 10
 
     def init_fireflies(self):
+        """ Генерирует равноверно распределенную между min и max популяцию нужного размера """
         return [
             {
                 "value": np.random.uniform(self.firefly_min, self.firefly_max),
@@ -71,6 +72,7 @@ class Firefly:
             image_matrix,
             firefly_evaluations_queue
     ):
+        """ Метод оценивает приспособленность светлячка """
         while True:
             try:
                 firefly_candidate = firefly_population_queue.get_nowait()
@@ -81,6 +83,8 @@ class Firefly:
                 firefly_evaluations_queue.put(watermark.score)
 
     def fireflies(self):
+        """ Запускает цикл полета светлячков """
+
         number_of_processes = os.cpu_count()
         candidate = self.generation[self.best_candidate["index"]]
 
@@ -105,6 +109,8 @@ class Firefly:
             for firefly in self.firefly_population:
                 firefly_population_queue.put(firefly)
 
+            # Наиболее ресурсоемкий процесс оценки каждой особи в популяции распарралелен на все ядра
+            # Мультипроцессорность протестирована на 16 ядерном intel x86-64
             for _ in range(number_of_processes):
                 p = Process(
                     target=Firefly.evaluate_parallel,
@@ -171,7 +177,7 @@ class Genetic:
         self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
-        self.elite_size = 20
+        self.elite_size = 30
         self.elite_mult_coef = 1
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
@@ -192,6 +198,8 @@ class Genetic:
         return result
 
     def crossing(self):
+        """ Функция реализуем процесс кроссинговера ёи мутации хромосом """
+
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
         new_generation.extend([i["value"] for i in self.elite_candidates] * self.elite_mult_coef)
@@ -224,7 +232,10 @@ class Genetic:
 
 
 class HybridMetaheuristic(Base, Genetic, Firefly):
-
+    """
+    Класс реализует гибридную метаэвристику основанную
+    на алгоритме светлячков и генетическом алгоритме
+    """
     def __init__(self, image_path, embedded_image_path):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
@@ -279,6 +290,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             generation_queue_nums.put(num)
             generation_queue.put(data)
 
+        # Наиболее ресурсоемкий процесс оценки каждой особи в популяции распарралелен на все ядра
+        # Мультипроцессорность протестирована на 16 ядерном intel x86-64
         for _ in range(number_of_processes):
             p = Process(
                 target=HybridMetaheuristic.evaluate_parallel,
