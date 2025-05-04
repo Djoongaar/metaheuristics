@@ -44,8 +44,8 @@ class Firefly:
         self.beta0 = 1.0
         self.gamma = 0.01
         self.theta = 0.97
-        self.firefly_min = 0
-        self.firefly_max = 20
+        self.firefly_min = 1
+        self.firefly_max = 21
         self.firefly_current_iteration = 0
         self.firefly_iteration_max = 10
         self.firefly_stop = False
@@ -171,8 +171,8 @@ class Genetic:
         self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
-        self.elite_size = 10
-        self.elite_mult_coef = 3
+        self.elite_size = 20
+        self.elite_mult_coef = 1
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
         self.generation = self.bin_to_index()
@@ -194,19 +194,28 @@ class Genetic:
     def crossing(self):
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
-        new_generation.extend([i["value"] for i in self.elite_candidates * self.elite_mult_coef])
-        new_generation = random.sample(new_generation, len(new_generation))
+        new_generation.extend([i["value"] for i in self.elite_candidates] * self.elite_mult_coef)
         self.generation_bin = []
         for i in range(0, len(new_generation), 2):
             child_1 = np.concatenate((
-                new_generation[i][:self.chromosome_length // 4],  # [0:1/4]
-                new_generation[i + 1][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
-                new_generation[i][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+                new_generation[i][:256],
+                new_generation[i+1][256:512],
+                new_generation[i][512:768],
+                new_generation[i+1][768:1024],
+                new_generation[i][1024:1280],
+                new_generation[i+1][1280:1536],
+                new_generation[i][1536:1792],
+                new_generation[i+1][1792:2048]
             ))
             child_2 = np.concatenate((
-                new_generation[i + 1][:self.chromosome_length // 4],  # [0:1/4]
-                new_generation[i][self.chromosome_length // 4: self.chromosome_length * 3 // 4],  # [1/4:3/4]
-                new_generation[i + 1][self.chromosome_length * 3 // 4:]  # [3/4:-1]
+                new_generation[i+1][:256],
+                new_generation[i][256:512],
+                new_generation[i+1][512:768],
+                new_generation[i][768:1024],
+                new_generation[i+1][1024:1280],
+                new_generation[i][1280:1536],
+                new_generation[i+1][1536:1792],
+                new_generation[i][1792:2048]
             ))
             self.generation_bin.append(Utilities.mutate(child_1))
             self.generation_bin.append(Utilities.mutate(child_2))
@@ -248,7 +257,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                     "ssim": watermark.ssim,
                     "psnr": watermark.psnr,
                     "value": generation_bin[num],
-                    "nc": watermark.avg_nc
+                    "nc": watermark.avg_nc,
+                    "firefly": best_firefly_value
                 }
 
             except queue.Empty:
@@ -304,7 +314,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         else:
             # Если в новом поколении есть хромосомы превосходящие какую-то из элитных
             # то надо вытеснить элитную хромосому и вставить новую
-            for i in results[:self.elite_size]:
+            for i in results:
                 if self.elite_candidates[-1]["score"] > i["score"]:
                     bisect.insort(self.elite_candidates, i, key=lambda x: x["score"])
             # а затем обрезать массив по заданной длине
@@ -327,6 +337,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
     def evolution(self):
         for epoch in tqdm(range(self.max_generations)):
+            assert len(self.generation) == len(self.generation_bin) == self.generation_size
+            assert len(self.elite_candidates) == 0 or len(self.elite_candidates) == self.elite_size
             results = self.evaluate()
 
             # Сохраняю эволюцию хромосом для дальнейшей визуализации
