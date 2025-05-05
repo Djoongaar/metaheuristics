@@ -177,7 +177,7 @@ class Genetic:
         self.best_candidate_indexes = None
         self.elite_candidates = []
         self.generation_size = 100
-        self.elite_size = 30
+        self.elite_size = 20
         self.elite_mult_coef = 1
         self.chromosome_length = 2048
         self.generation_bin = [self.random_candidates() for _ in range(self.generation_size)]
@@ -198,33 +198,34 @@ class Genetic:
         return result
 
     def crossing(self):
-        """ Функция реализуем процесс кроссинговера ёи мутации хромосом """
+        """ Функция реализует процесс кроссинговера ёи мутации хромосом """
 
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
         new_generation.extend([i["value"] for i in self.elite_candidates] * self.elite_mult_coef)
         self.generation_bin = []
         for i in range(0, len(new_generation), 2):
-            child_1 = np.concatenate((
-                new_generation[i][:256],
-                new_generation[i+1][256:512],
-                new_generation[i][512:768],
-                new_generation[i+1][768:1024],
-                new_generation[i][1024:1280],
-                new_generation[i+1][1280:1536],
-                new_generation[i][1536:1792],
-                new_generation[i+1][1792:2048]
-            ))
-            child_2 = np.concatenate((
-                new_generation[i+1][:256],
-                new_generation[i][256:512],
-                new_generation[i+1][512:768],
-                new_generation[i][768:1024],
-                new_generation[i+1][1024:1280],
-                new_generation[i][1280:1536],
-                new_generation[i+1][1536:1792],
-                new_generation[i][1792:2048]
-            ))
+            merge_type = random.randint(0,1)
+            if merge_type == 0:
+                child_1 = np.concatenate((
+                    new_generation[i][:512],
+                    new_generation[i+1][512:1536],
+                    new_generation[i][1536:]
+                ))
+                child_2 = np.concatenate((
+                    new_generation[i+1][:512],
+                    new_generation[i][512:1536],
+                    new_generation[i+1][1536:]
+                ))
+            else:
+                child_1 = np.concatenate((
+                    new_generation[i][:1024],
+                    new_generation[i+1][1024:]
+                ))
+                child_2 = np.concatenate((
+                    new_generation[i+1][:1024],
+                    new_generation[i][1024:]
+                ))
             self.generation_bin.append(Utilities.mutate(child_1))
             self.generation_bin.append(Utilities.mutate(child_2))
 
