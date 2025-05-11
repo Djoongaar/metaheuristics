@@ -460,6 +460,6 @@ class Attack:
         :param quality: Возможные параметры: 70, 80, 90
         """
         buffered = io.BytesIO()
-        self.image.save(buffered, format="PNG", quality=quality)
+        self.image.save(buffered, format="JPEG", quality=quality)
 
         return Utilities.image_to_matrix(Image.open(buffered))
