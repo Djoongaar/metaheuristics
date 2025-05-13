@@ -321,6 +321,7 @@ class Utilities:
 
 
 class Attack:
+    """ Атаки на  ЦВЗ """
     def __init__(self, image):
         self.image = image
         self.image_matrix = Utilities.image_to_matrix(image)

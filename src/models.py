@@ -20,6 +20,7 @@ from multiprocessing import (
 
 
 class Base:
+
     def __init__(self, image_path: str, embedded_image_path: str):
         self.image = Utilities.get_image(image_path)
         self.image_matrix = Utilities.image_to_matrix(self.image)
@@ -38,7 +39,7 @@ class Base:
         return f"{image_path}_{embedded_image_path}"
 
 class Firefly:
-
+    """ Алгоритм светлячков"""
     def __init__(self):
         self.alpha = 0.05
         self.beta0 = 1.0
@@ -72,7 +73,11 @@ class Firefly:
             image_matrix,
             firefly_evaluations_queue
     ):
-        """ Метод оценивает приспособленность светлячка """
+        """
+        Метод расчитывает целевую функцию светлячка f(x).
+        Реализация позволяет использовать метод параллельно
+        на нескольких ядрах.
+        """
         while True:
             try:
                 firefly_candidate = firefly_population_queue.get_nowait()
@@ -83,8 +88,9 @@ class Firefly:
                 firefly_evaluations_queue.put(watermark.score)
 
     def fireflies(self):
-        """ Запускает цикл полета светлячков """
-
+        """
+        Запускает одну итерацию полета светлячков
+        """
         number_of_processes = os.cpu_count()
         candidate = self.generation[self.best_candidate["index"]]
 
@@ -110,7 +116,7 @@ class Firefly:
                 firefly_population_queue.put(firefly)
 
             # Наиболее ресурсоемкий процесс оценки каждой особи в популяции распарралелен на все ядра
-            # Мультипроцессорность протестирована на 16 ядерном intel x86-64
+            # Мультипроцессорность протестирована на 16 ядерном Intel x86-64
             for _ in range(number_of_processes):
                 p = Process(
                     target=Firefly.evaluate_parallel,
@@ -171,7 +177,7 @@ class Firefly:
 
 
 class Genetic:
-
+    """ Генетический алгоритм """
     def __init__(self):
         self.best_candidate = None
         self.best_candidate_indexes = None
@@ -198,7 +204,7 @@ class Genetic:
         return result
 
     def crossing(self):
-        """ Функция реализует процесс кроссинговера ёи мутации хромосом """
+        """ Функция реализует процесс кроссинговера и мутации хромосом """
 
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
@@ -253,7 +259,10 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             image_matrix,
             best_firefly_value,
             generation_evaluations):
-
+        """
+        Метод расчитывает показатель целевой функции для светлячка и
+        реализован для многопроцессорного запуска.
+        """
         if best_firefly_value is None:
             best_firefly_value = 10
 
@@ -292,7 +301,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             generation_queue.put(data)
 
         # Наиболее ресурсоемкий процесс оценки каждой особи в популяции распарралелен на все ядра
-        # Мультипроцессорность протестирована на 16 ядерном intel x86-64
+        # Мультипроцессорность протестирована на 16 ядерном Intel x86-64
         for _ in range(number_of_processes):
             p = Process(
                 target=HybridMetaheuristic.evaluate_parallel,
@@ -338,14 +347,13 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
         if self.best_candidate is None or self.elite_candidates[0]["score"] < self.best_candidate["score"]:
             self.best_candidate = self.elite_candidates[0]
 
-            print("Best score:", self.best_candidate["score"])
             self.best_candidate_indexes = []
 
             for num, i in enumerate(self.best_candidate["value"]):
                 if i:
                     self.best_candidate_indexes.append(self.all_candidates[num])
 
-        ### Save best results after crossing
+        ### Сохраняю лучший результат после скрещивания
         self.last_score = results[:self.generation_size - self.elite_size * self.elite_mult_coef]
         return self.elite_candidates + results
 
@@ -366,7 +374,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
 
 class Watermark:
-
+    """ Алгоритм встраивания ЦВЗ """
     def __init__(self, candidate_blocks, embedded_image_bin, image_matrix, threshold):
         self.image_matrix = image_matrix
         self.embedded_image_bin = embedded_image_bin
@@ -400,7 +408,10 @@ class Watermark:
         self.secret_key[i][j] = block_index
 
     def encoding(self):
-
+        """
+        Метод реализует схему встраивания основанную
+        на разнице средних значений пикселей
+        """
         for i in range(64):
             for j in range(64):
                 bit_count = i * 64 + j
@@ -445,7 +456,12 @@ class Watermark:
         return self.embedded_matrix
 
     def get_score(self):
-        # Согласно статье принимаем параметр гамма за 10
+        """
+        Метод возвращает значение целевой функции,
+        предварительно рассчитав среднее NC (устойчивости к атакам),
+        а также взяв ранее расчитанные параметры незаметности: SSIM и PSNR
+        """
+        # Статический параметр гамма взят из исследуемой Статьи
         gamma = 10
 
         # Произвожу разные атаки на стеганограмму и пытаюсь получить ЦВЗ
