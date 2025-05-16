@@ -5,22 +5,12 @@ import bisect
 import queue
 import time
 from csv import writer
-from PIL import Image
-from scipy.linalg import hadamard
 from src import Utilities, Attack
 from tqdm import tqdm
-from skimage.metrics import (
-    structural_similarity as ssim,
-    peak_signal_noise_ratio as psnr
-)
-from multiprocessing import (
-    Process,
-    Queue
-)
+from multiprocessing import Process, Queue
 
 
 class Base:
-
     def __init__(self, image_path: str, embedded_image_path: str):
         self.image = Utilities.get_image(image_path)
         self.image_matrix = Utilities.image_to_matrix(self.image)
@@ -28,9 +18,18 @@ class Base:
         self.embedded_image = Utilities.get_image(embedded_image_path)
         self.embedded_image_bin = Utilities.image_to_bin(self.embedded_image)
         self.all_candidates = Utilities.get_all_candidates(self.block_array)
-        self.logfile_suffix = self.get_log_file_suffix(image_path, embedded_image_path)
-        self.genetic_log_file_path = os.path.join("log", f"{self.logfile_suffix}_genetic.csv")
-        self.firefly_log_file_path = os.path.join("log", f"{self.logfile_suffix}_firefly.csv")
+        self.logfile_suffix = self.get_log_file_suffix(
+            image_path, 
+            embedded_image_path
+            )
+        self.genetic_log_file_path = os.path.join(
+            "log", 
+            f"{self.logfile_suffix}_genetic.csv"
+            )
+        self.firefly_log_file_path = os.path.join(
+            "log", 
+            f"{self.logfile_suffix}_firefly.csv"
+            )
 
     @staticmethod
     def get_log_file_suffix(image_path, embedded_image_path):
@@ -38,8 +37,10 @@ class Base:
         embedded_image_path = embedded_image_path.split(".")[0].split("/")[1]
         return f"{image_path}_{embedded_image_path}"
 
+
 class Firefly:
     """ Алгоритм светлячков"""
+
     def __init__(self):
         self.alpha = 0.05
         self.beta0 = 1.0
@@ -57,7 +58,10 @@ class Firefly:
         self.firefly_population_size = 10
 
     def init_fireflies(self):
-        """ Генерирует равноверно распределенную между min и max популяцию нужного размера """
+        """ 
+        Генерирует равноверно распределенную между 
+        min и max популяцию нужного размера 
+        """
         return [
             {
                 "value": np.random.uniform(self.firefly_min, self.firefly_max),
@@ -75,13 +79,17 @@ class Firefly:
     ):
         """
         Метод расчитывает целевую функцию светлячка f(x).
-        Реализация позволяет использовать метод параллельно
-        на нескольких ядрах.
+        Реализация позволяет использовать метод параллельно на нескольких ядрах.
         """
         while True:
             try:
                 firefly_candidate = firefly_population_queue.get_nowait()
-                watermark = Watermark(candidate, embedded_image_bin, image_matrix, firefly_candidate["value"])
+                watermark = Watermark(
+                    candidate, 
+                    embedded_image_bin, 
+                    image_matrix, 
+                    firefly_candidate["value"]
+                    )
             except queue.Empty:
                 return True
             else:
@@ -93,15 +101,16 @@ class Firefly:
         """
         number_of_processes = os.cpu_count()
         candidate = self.generation[self.best_candidate["index"]]
-
         # Инициализация популяции светлячков
         self.firefly_population = self.init_fireflies()
 
         # Если были предыдущие итерации, то добавляем в популяцию лучшее решение (элитные особи)
         if self.best_firefly_value:
             for _ in range(self.firefly_elite_size):
-                self.firefly_population[random.randint(0, self.firefly_population_size - 1)]["value"] = \
-                    self.best_firefly_value
+                self.firefly_population[
+                    random.randint(
+                        0, self.firefly_population_size - 1
+                        )]["value"] = self.best_firefly_value
 
         # Запускаем алгоритм только если не достигнут предел счетчика self.firefly_current_iteration
         if self.firefly_current_iteration >= self.firefly_iteration_max:
@@ -178,6 +187,7 @@ class Firefly:
 
 class Genetic:
     """ Генетический алгоритм """
+
     def __init__(self):
         self.best_candidate = None
         self.best_candidate_indexes = None
@@ -205,31 +215,30 @@ class Genetic:
 
     def crossing(self):
         """ Функция реализует процесс кроссинговера и мутации хромосом """
-
         new_generation = []
         new_generation.extend([i["value"] for i in self.last_score])
         new_generation.extend([i["value"] for i in self.elite_candidates] * self.elite_mult_coef)
         self.generation_bin = []
         for i in range(0, len(new_generation), 2):
-            merge_type = random.randint(0,1)
+            merge_type = random.randint(0, 1)
             if merge_type == 0:
                 child_1 = np.concatenate((
                     new_generation[i][:512],
-                    new_generation[i+1][512:1536],
+                    new_generation[i + 1][512:1536],
                     new_generation[i][1536:]
                 ))
                 child_2 = np.concatenate((
-                    new_generation[i+1][:512],
+                    new_generation[i + 1][:512],
                     new_generation[i][512:1536],
-                    new_generation[i+1][1536:]
+                    new_generation[i + 1][1536:]
                 ))
             else:
                 child_1 = np.concatenate((
                     new_generation[i][:1024],
-                    new_generation[i+1][1024:]
+                    new_generation[i + 1][1024:]
                 ))
                 child_2 = np.concatenate((
-                    new_generation[i+1][:1024],
+                    new_generation[i + 1][:1024],
                     new_generation[i][1024:]
                 ))
             self.generation_bin.append(Utilities.mutate(child_1))
@@ -243,6 +252,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
     Класс реализует гибридную метаэвристику основанную
     на алгоритме светлячков и генетическом алгоритме
     """
+
     def __init__(self, image_path, embedded_image_path):
         Base.__init__(self, image_path, embedded_image_path)
         Genetic.__init__(self)
@@ -287,10 +297,8 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
             else:
                 generation_evaluations.put(result)
 
-
     def evaluate(self):
         number_of_processes = os.cpu_count()
-
         generation_queue = Queue()
         generation_queue_nums = Queue()
         generation_evaluations = Queue()
@@ -353,7 +361,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
                 if i:
                     self.best_candidate_indexes.append(self.all_candidates[num])
 
-        ### Сохраняю лучший результат после скрещивания
+        # Сохраняю лучший результат после скрещивания
         self.last_score = results[:self.generation_size - self.elite_size * self.elite_mult_coef]
         return self.elite_candidates + results
 
@@ -375,6 +383,7 @@ class HybridMetaheuristic(Base, Genetic, Firefly):
 
 class Watermark:
     """ Алгоритм встраивания ЦВЗ """
+
     def __init__(self, candidate_blocks, embedded_image_bin, image_matrix, threshold):
         self.image_matrix = image_matrix
         self.embedded_image_bin = embedded_image_bin
@@ -433,7 +442,6 @@ class Watermark:
         Погружает ЦВЗ (бинарное изображение размерностью 64 х 64)
         в покрывающее изображение размером 512 х 512
         """
-
         # Шаг 1. Сначала для всех блоков-кандидатов считаем функцию Адамара
         for candidate_block in candidate_blocks:
             hadamard_matrix = Utilities.get_hadamard(candidate_block["origin"])
@@ -463,39 +471,114 @@ class Watermark:
         """
         # Статический параметр гамма взят из исследуемой Статьи
         gamma = 10
-
         # Произвожу разные атаки на стеганограмму и пытаюсь получить ЦВЗ
         attacked = Attack(self.watermark)
 
-        mf = Utilities.extracting(Utilities.matrix_to_image(attacked.mf), self.secret_key)
-        gs3 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs3), self.secret_key)
-        gs5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gs5), self.secret_key)
-        avr = Utilities.extracting(Utilities.matrix_to_image(attacked.avr), self.secret_key)
-        shr = Utilities.extracting(Utilities.matrix_to_image(attacked.shr), self.secret_key)
-        his = Utilities.extracting(Utilities.matrix_to_image(attacked.his), self.secret_key)
-        gc2 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc2), self.secret_key)
-        gc4 = Utilities.extracting(Utilities.matrix_to_image(attacked.gc4), self.secret_key)
-        gn1 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn1), self.secret_key)
-        gn5 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn5), self.secret_key)
-        gn9 = Utilities.extracting(Utilities.matrix_to_image(attacked.gn9), self.secret_key)
-        sp1 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp1), self.secret_key)
-        sp2 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp2), self.secret_key)
-        sp3 = Utilities.extracting(Utilities.matrix_to_image(attacked.sp3), self.secret_key)
-        crp_ct = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_ct), self.secret_key)
-        crp_tl = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_tl), self.secret_key)
-        crp_br = Utilities.extracting(Utilities.matrix_to_image(attacked.crp_br), self.secret_key)
-        scl_1024 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_1024), self.secret_key)
-        scl_256 = Utilities.extracting(Utilities.matrix_to_image(attacked.scl_256), self.secret_key)
-        rt5 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt5), self.secret_key)
-        rt45 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt45), self.secret_key)
-        rt90 = Utilities.extracting(Utilities.matrix_to_image(attacked.rt90), self.secret_key)
-        com70 = Utilities.extracting(Utilities.matrix_to_image(attacked.com70), self.secret_key)
-        com80 = Utilities.extracting(Utilities.matrix_to_image(attacked.com80), self.secret_key)
-        com90 = Utilities.extracting(Utilities.matrix_to_image(attacked.com90), self.secret_key)
+        mf = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.mf), 
+            self.secret_key
+            )
+        gs3 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gs3), 
+            self.secret_key
+            )
+        gs5 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gs5), 
+            self.secret_key
+            )
+        avr = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.avr), 
+            self.secret_key
+            )
+        shr = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.shr), 
+            self.secret_key
+            )
+        his = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.his), 
+            self.secret_key
+            )
+        gc2 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gc2), 
+            self.secret_key
+            )
+        gc4 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gc4), 
+            self.secret_key
+            )
+        gn1 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gn1), 
+            self.secret_key
+            )
+        gn5 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gn5), 
+            self.secret_key
+            )
+        gn9 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.gn9), 
+            self.secret_key
+            )
+        sp1 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.sp1), 
+            self.secret_key
+            )
+        sp2 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.sp2), 
+            self.secret_key
+            )
+        sp3 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.sp3), 
+            self.secret_key
+            )
+        crp_ct = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.crp_ct), 
+            self.secret_key
+            )
+        crp_tl = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.crp_tl), 
+            self.secret_key
+            )
+        crp_br = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.crp_br), 
+            self.secret_key
+            )
+        scl_1024 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.scl_1024), 
+            self.secret_key
+            )
+        scl_256 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.scl_256), 
+            self.secret_key
+            )
+        rt5 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.rt5), 
+            self.secret_key
+            )
+        rt45 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.rt45), 
+            self.secret_key
+            )
+        rt90 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.rt90), 
+            self.secret_key
+            )
+        com70 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.com70), 
+            self.secret_key
+            )
+        com80 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.com80), 
+            self.secret_key
+            )
+        com90 = Utilities.extracting(
+            Utilities.matrix_to_image(attacked.com90), 
+            self.secret_key
+            )
 
         # Считаю параметр нормальной корреляции для каждого полученного ЦВЗ
         nc = [
-            Utilities.get_normal_correlation(i, self.embedded_image_bin) for i in (
+            Utilities.get_normal_correlation(
+                i, self.embedded_image_bin) for i in (
                 mf, gs3, gs5, avr, shr, his, gc2, gc4, gn1, gn5, gn9, sp1,
                 sp2, sp3, rt5, rt45, rt90, com70, com80, com90, crp_ct,
                 crp_tl, crp_br, scl_1024, scl_256
